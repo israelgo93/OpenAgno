@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agno.os import AgentOS
 from agno.registry import Registry
+from agno.tools.crawl4ai import Crawl4aiTools
+from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils.log import logger
 
 from loader import load_workspace
@@ -71,7 +73,7 @@ if studio_config.get("enabled", True) and not ws["db_url"].startswith("sqlite"):
 
 	registry = Registry(
 		name="AgnoBot Registry",
-		tools=[],
+		tools=[DuckDuckGoTools(), Crawl4aiTools()],
 		models=all_models,
 		dbs=[db],
 	)

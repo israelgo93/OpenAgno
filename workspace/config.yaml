@@ -28,7 +28,7 @@ vector:
 # Canales habilitados
 channels:
   - whatsapp
-  # - slack
+  - slack
 
 # Memoria
 memory:

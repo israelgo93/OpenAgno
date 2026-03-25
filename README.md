@@ -7,7 +7,7 @@
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://docs.agno.com"><img src="https://img.shields.io/badge/Agno-Framework-6366F1?style=flat-square" alt="Agno"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-3_Completada-green?style=flat-square" alt="Status"></a>
+    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-3_Validada-green?style=flat-square" alt="Status"></a>
   </p>
 </p>
 
@@ -171,7 +171,10 @@ agent:
     - "Busca en la web y sintetiza informacion."
   config:
     tool_call_limit: 5
+    enable_agentic_memory: false
     markdown: true
+execution:
+  type: "local"
 ```
 
 ### Teams
@@ -293,6 +296,25 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 
 ---
 
+## Progreso del Proyecto
+
+| Fase | Descripcion | Estado |
+|------|-------------|--------|
+| **F1: MVP** | Gateway + Agente + Knowledge + WhatsApp + MCP | Completada |
+| **F2: CLI + Admin** | Onboarding wizard + Validador + Admin programatico | Completada |
+| **F3: Multi-Canal + Teams** | Sub-agentes YAML + Teams + Slack + Knowledge endpoints | Validada |
+| **F4: Remote Agents** | Agentes distribuidos + MCP avanzado (Supabase, GitHub) + A2A | Planificada |
+
+### Proxima Fase: F4 — Remote Execution + MCP Avanzado
+
+- Agentes distribuidos en multiples instancias de AgentOS
+- `RemoteAgent` para agentes en servidores separados
+- MCP servers configurables (Supabase, GitHub, Filesystem)
+- Protocolo A2A para interoperabilidad inter-framework
+- Docker multi-servicio (Gateway + Research Server + DB)
+
+---
+
 ## Features
 
 | Feature | Descripcion |
@@ -312,6 +334,7 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 | CLI Onboarding | Wizard que genera workspace completo |
 | Admin programatico | Gestiona sesiones, memorias, knowledge via CLI |
 | Validacion automatica | Verifica workspace, sub-agentes y teams al arrancar |
+| Registry con tools | Studio puede asignar DuckDuckGo y Crawl4AI a agentes |
 
 ---
 
@@ -357,9 +380,10 @@ OpenAgno/
     validator.py             # Validacion de workspace + sub-agentes + teams
     admin.py                 # Admin via AgentOSClient
   docs_plan/
-    plan_agno_agent_platform.md
-    phase1_validation_phase2_plan.md
-    phase2_validation_phase3_plan.md
+    plan_agno_agent_platform.md           # Plan general del proyecto
+    phase1_validation_phase2_plan.md      # Validacion F1 + Plan F2
+    phase2_validation_phase3_plan.md      # Validacion F2 + Plan F3
+    phase3_validation_phase4_plan.md      # Validacion F3 + Plan F4
   .env.example               # Template de variables
   requirements.txt           # Dependencias
   docker-compose.yml         # PostgreSQL pgvector local
@@ -395,6 +419,8 @@ OpenAgno/
 | Slack | [Slack Interface](https://docs.agno.com/agent-os/interfaces/slack/introduction) |
 | AgentOS | [Demo](https://docs.agno.com/examples/agent-os/demo) |
 | Memory | [Agent Memory](https://docs.agno.com/agents/usage/agent-with-memory) |
+| Registry | [Studio Registry](https://docs.agno.com/agent-os/studio/registry) |
+| Remote Agents | [Remote Agent](https://docs.agno.com/agents/remote-agent) |
 
 ---
 

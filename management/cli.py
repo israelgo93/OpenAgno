@@ -150,7 +150,8 @@ def run_onboarding() -> None:
 	slack_vars: dict[str, str] = {}
 	if "slack" in channels:
 		print("\n  Configuracion Slack:")
-		slack_vars["SLACK_TOKEN"] = _prompt("Bot Token")
+		slack_vars["SLACK_TOKEN"] = _prompt("Bot Token (xoxb-...)")
+		slack_vars["SLACK_SIGNING_SECRET"] = _prompt("Signing Secret")
 
 	# -- PASO 5: Tools --
 	print("\nPASO 5: Herramientas adicionales")
