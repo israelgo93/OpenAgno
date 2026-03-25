@@ -1,45 +1,12 @@
-# ===================================
-# MCP - Servidores Model Context Protocol
-# ===================================
-
-# MCP Servers que el agente puede usar como herramientas
 servers:
-  # Documentacion de Agno (siempre habilitado)
-  - name: agno_docs
-    enabled: true
-    transport: "streamable-http"
-    url: "https://docs.agno.com/mcp"
-
-  # Tavily MCP - Busqueda web avanzada (F5)
-  - name: tavily
-    enabled: false
-    transport: "streamable-http"
-    url: "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_API_KEY}"
-    description: "Busqueda web avanzada con Tavily (search, extract, map, crawl)"
-
-  # Supabase MCP - Gestion de proyectos Supabase
-  - name: supabase
-    enabled: false
-    transport: "stdio"
-    command: "npx -y @supabase/mcp-server-supabase@latest --access-token=${SUPABASE_ACCESS_TOKEN}"
-    description: "Gestion de proyectos, schemas y edge functions en Supabase"
-
-  # GitHub MCP - Interaccion con repositorios
-  - name: github
-    enabled: false
-    transport: "stdio"
-    command: "npx -y @modelcontextprotocol/server-github"
-    env:
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
-    description: "Interaccion con repos GitHub (issues, PRs, codigo)"
-
-  # Filesystem MCP - Acceso a documentos locales
-  - name: filesystem
-    enabled: false
-    transport: "stdio"
-    command: "npx -y @modelcontextprotocol/server-filesystem /app/workspace/knowledge/docs"
-    description: "Acceso del agente a documentos locales"
-
-# Configuracion del servidor MCP propio (expuesto por AgentOS)
+- name: agno_docs
+  enabled: true
+  transport: streamable-http
+  url: https://docs.agno.com/mcp
+- name: tavily
+  enabled: true
+  transport: streamable-http
+  url: https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_API_KEY}
+  description: Busqueda web avanzada con Tavily
 expose:
   enabled: true

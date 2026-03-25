@@ -1,62 +1,39 @@
-# ===================================
-# AgnoBot - Configuracion Central
-# ===================================
-
-# Identidad del agente
 agent:
-  name: "AgnoBot"
-  id: "agnobot-main"
-  description: "Asistente personal multimodal autonomo"
-
-# Modelo de IA
+  name: MaxAgno
+  id: agnobot-main
+  description: Es un orquestador de proyecto y tarea para Israel
 model:
-  provider: "google"        # google | openai | anthropic
-  id: "gemini-2.5-flash"    # ID especifico del modelo (antes gemini-2.0-flash)
-
-# Base de datos
+  provider: aws_bedrock_claude
+  id: us.anthropic.claude-opus-4-20250805-v1:0
+  aws_region: us-east-1
 database:
-  type: "sqlite"            # supabase | local | sqlite (sqlite: primera prueba sin Docker/Supabase)
-  knowledge_table: "agnobot_knowledge_contents"
-  vector_table: "agnobot_knowledge_vectors"
-
-# Vector DB
+  type: supabase
+  knowledge_table: agnobot_knowledge_contents
+  vector_table: agnobot_knowledge_vectors
 vector:
-  search_type: "hybrid"     # hybrid | vector | keyword
-  embedder: "text-embedding-3-small"
+  search_type: hybrid
+  embedder: text-embedding-3-small
   max_results: 5
-
-# Canales habilitados (vacio = solo Web/Studio; reactiva whatsapp/slack cuando tengas tokens en .env)
-channels: []
-
-# Memoria
+channels:
+- whatsapp
 memory:
   enable_agentic_memory: true
   num_history_runs: 5
-
-# AgentOS
 agentos:
-  id: "agnobot-gateway"
-  name: "AgnoBot Platform"
+  id: agnobot-gateway
+  name: MaxAgno Platform
   port: 8000
   tracing: true
   enable_mcp_server: true
-
-# Studio
 studio:
   enabled: true
-
-# A2A Protocol
 a2a:
   enabled: false
-
-# Scheduler (F5) — ver https://docs.agno.com/agent-os/scheduler/overview
 scheduler:
   enabled: true
   poll_interval: 15
-  timezone: "America/Guayaquil"
-
-# Knowledge auto-ingesta (F5)
+  timezone: America/Guayaquil
 knowledge:
   auto_ingest_docs: true
-  auto_ingest_urls: true
+  auto_ingest_urls: false
   skip_if_exists: true

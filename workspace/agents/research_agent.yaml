@@ -1,33 +1,23 @@
-# ===================================
-# Sub-Agente: Investigador
-# ===================================
-
 agent:
-  name: "Research Agent"
-  id: "research-agent"
-  role: "Realiza busquedas web profundas y sintetiza informacion"
-
+  name: Research Agent
+  id: research-agent
+  role: Realiza busquedas web profundas y sintetiza informacion
   model:
-    provider: "google"
-    id: "gemini-2.5-flash"
-
+    provider: aws_bedrock_claude
+    id: us.anthropic.claude-opus-4-20250805-v1:0
   tools:
-    - duckduckgo
-    - crawl4ai
-    - reasoning
-
+  - duckduckgo
+  - crawl4ai
+  - reasoning
   instructions:
-    - "Eres un agente especializado en investigacion profunda."
-    - "Busca en la web, scrapea paginas relevantes y sintetiza la informacion."
-    - "Siempre cita tus fuentes con URLs completas."
-    - "Se conciso pero completo en tus reportes."
-    - "Si una busqueda no da resultados, intenta con terminos alternativos."
-
+  - Eres un agente especializado en investigacion profunda.
+  - Busca en la web, scrapea paginas y sintetiza informacion.
+  - Siempre cita tus fuentes con URLs completas.
+  - Se conciso pero completo.
   config:
     tool_call_limit: 5
     enable_agentic_memory: false
     add_datetime_to_context: true
     markdown: true
-
 execution:
-  type: "local"
+  type: local

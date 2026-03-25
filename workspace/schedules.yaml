@@ -1,33 +1,8 @@
-# ===================================
-# Scheduler - Tareas Programadas (F5)
-# ===================================
-# Referencia: https://docs.agno.com/agent-os/scheduler/overview
-# Formato cron: minuto hora dia_mes mes dia_semana
-
 schedules:
-  # Resumen diario de noticias
-  - name: "Resumen matutino"
-    enabled: false
-    agent_id: "agnobot-main"
-    cron: "0 9 * * 1-5"
-    timezone: "America/Guayaquil"
-    message: "Genera un resumen de las 5 noticias mas importantes de tecnologia e IA de hoy. Usa busqueda web."
-    user_id: "scheduler-admin"
-
-  # Re-ingesta semanal de URLs
-  - name: "Re-ingesta knowledge URLs"
-    enabled: false
-    agent_id: "agnobot-main"
-    cron: "0 2 * * 0"
-    timezone: "America/Guayaquil"
-    message: "Actualiza la base de conocimiento re-ingestando todas las URLs configuradas."
-    user_id: "scheduler-admin"
-
-  # Reporte mensual
-  - name: "Reporte mensual"
-    enabled: false
-    agent_id: "agnobot-main"
-    cron: "0 3 1 * *"
-    timezone: "America/Guayaquil"
-    message: "Genera un reporte del uso del sistema en el ultimo mes."
-    user_id: "scheduler-admin"
+- name: Resumen matutino
+  enabled: false
+  agent_id: agnobot-main
+  cron: 0 9 * * 1-5
+  timezone: America/Guayaquil
+  message: Genera un resumen breve de noticias de tecnologia.
+  user_id: scheduler-admin

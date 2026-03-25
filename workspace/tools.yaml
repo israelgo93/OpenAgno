@@ -1,55 +1,33 @@
-# ===================================
-# Tools - Herramientas del Agente
-# ===================================
-
-# Tools nativos de Agno (siempre disponibles)
 builtin:
-  - name: duckduckgo
-    enabled: true
-    config: {}
-
-  - name: crawl4ai
-    enabled: true
-    config:
-      max_length: 2000
-
-  - name: reasoning
-    enabled: true
-    config:
-      add_instructions: true
-
-# Tools que requieren configuracion (API keys en .env)
+- name: duckduckgo
+  enabled: true
+  config: {}
+- name: crawl4ai
+  enabled: true
+  config:
+    max_length: 2000
+- name: reasoning
+  enabled: true
+  config:
+    add_instructions: true
 optional:
-  - name: email
-    enabled: false
-    config:
-      sender_email: "${GMAIL_SENDER}"
-      sender_name: "AgnoBot"
-      sender_passkey: "${GMAIL_PASSKEY}"
-      receiver_email: "${GMAIL_RECEIVER}"
-
-  - name: tavily
-    enabled: false
-    # Requiere TAVILY_API_KEY en .env
-    # Alternativa: usar Tavily como MCP en mcp.yaml (no requiere pip)
-    config: {}
-
-  - name: spotify
-    enabled: false
-
-  - name: shell
-    enabled: true
-    # Riesgo de seguridad: ejecuta comandos sin confirmacion; cwd acotado a base_dir
-    config:
-      base_dir: "${OPENAGNO_ROOT}"
-
-  - name: workspace
-    enabled: true
-    description: "Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)"
-
-  - name: scheduler_mgmt
-    enabled: true
-    description: "Gestion de recordatorios y crons via API REST nativa"
-
-# Toolkits personalizados (archivos Python en tools/)
+- name: email
+  enabled: false
+  config:
+    sender_email: ${GMAIL_SENDER}
+    sender_name: MaxAgno
+    sender_passkey: ${GMAIL_PASSKEY}
+    receiver_email: ${GMAIL_RECEIVER}
+- name: tavily
+  enabled: true
+- name: spotify
+  enabled: false
+- name: shell
+  enabled: false
+- name: workspace
+  enabled: true
+  description: Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)
+- name: scheduler_mgmt
+  enabled: true
+  description: Gestion de recordatorios y crons via API REST nativa
 custom: []
