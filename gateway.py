@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from agno.os import AgentOS
 from agno.registry import Registry
@@ -19,12 +20,14 @@ from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils.log import logger
 
 from loader import load_workspace
-from management.validator import validate_workspace, print_validation
+from management.validator import print_validation, validate_workspace, workspace_warnings
 
 validation_errors = validate_workspace()
 if validation_errors:
 	print_validation(validation_errors)
 	logger.warning(f"Workspace tiene {len(validation_errors)} advertencia(s)")
+for _w in workspace_warnings():
+	logger.warning(_w)
 
 ws = load_workspace()
 config = ws["config"]
@@ -94,6 +97,13 @@ base_app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
+
+@base_app.get("/")
+async def root() -> RedirectResponse:
+	"""La raiz no tiene UI de AgentOS; redirige a la documentacion interactiva OpenAPI."""
+	return RedirectResponse(url="/docs", status_code=307)
+
 
 if knowledge:
 	from routes.knowledge_routes import create_knowledge_router

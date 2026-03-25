@@ -9,7 +9,7 @@ agent:
 
   model:
     provider: "google"
-    id: "gemini-2.0-flash"
+    id: "gemini-2.5-flash"
 
   tools:
     - duckduckgo

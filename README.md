@@ -32,6 +32,7 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
 - **Tavily** — Tool opcional y servidor MCP streamable-http para busqueda web avanzada
 - **CLI de Onboarding** — Genera workspace completo con un wizard interactivo (incluye F5)
 - **Admin programatico** — Gestiona sesiones, memorias y knowledge via CLI o codigo
+- **Integraciones por carpeta** — `workspace/integrations/<id>/` con `integration.yaml` y `config.env` opcional; el loader fusiona tools y MCP al arrancar (ver `workspace/integrations/README.md`)
 
 ---
 
@@ -157,8 +158,10 @@ El corazon de OpenAgno es el **workspace**: una carpeta con archivos declarativo
 | `workspace/agents/research_agent.yaml` | Sub-agente de investigacion |
 | `workspace/agents/teams.yaml` | Equipos multi-agente |
 | `workspace/schedules.yaml` | Plantilla / referencia de tareas cron (registro real via API AgentOS) |
+| `workspace/knowledge/docs/AGENT_OPERACIONES.md` | Runbook: estructura del repo, backup, validacion, reinicio, ShellTools |
+| `workspace/integrations/` | Integraciones declarativas (`integration.yaml` + `config.env` opcional); se fusionan con tools y MCP al arrancar |
 
-Modifica cualquier archivo y reinicia para aplicar los cambios.
+Modifica cualquier archivo y reinicia para aplicar los cambios. **ShellTools** se configura en `workspace/tools.yaml` (puede ejecutar comandos en el servidor con cwd acotado; revisa el runbook y `OPENAGNO_ROOT` en `.env.example`).
 
 ### Sub-Agentes
 
@@ -328,6 +331,37 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 
 ---
 
+## Actualizaciones recientes (marzo 2026)
+
+Resumen para equipo y siguientes fases (detalle en Linear y Slack del proyecto).
+
+### Entregado
+
+- **Runbook operativo:** `workspace/knowledge/docs/AGENT_OPERACIONES.md` (backup, validacion, reinicio, seguridad Shell).
+- **ShellTools** con `base_dir` acotado via `OPENAGNO_ROOT` en `.env.example`; fusion en `loader.py` y advertencias en `gateway.py` / validador.
+- **Instrucciones del agente** orientadas a personalizacion declarativa (sin negar cambios en `workspace/` cuando el usuario lo pide).
+- **Integraciones declarativas:** `workspace/integrations/*/integration.yaml` + carga opcional de `config.env`; fusion con `tools.yaml` y `mcp.yaml` en `loader.py`; ejemplo `integrations/tavily/`; validador alineado (chequeo Tavily tool o MCP).
+- **`.gitignore`:** `backups/`, `workspace/integrations/**/config.env`.
+
+### Limitaciones conocidas
+
+- Tras cambiar integraciones, `tools.yaml`, `mcp.yaml` o `config.yaml` hace falta **reiniciar el proceso** del gateway (no hay hot-reload).
+- **Studio (os.agno.com)** puede mostrar instrucciones distintas si hay borradores no publicados; alinear con `workspace/instructions.md` en el servidor.
+- Rate limits de APIs externas (ej. Gemini 429) no son CORS; revisar cuotas y modelo en `workspace/config.yaml`.
+
+### Sugerencias para siguiente integracion o fase
+
+- Endpoint o comando admin **reload-config** que reconstruya el agente sin matar todo el proceso (diseno con cuidado de sesiones).
+- Unidad **systemd** de ejemplo en `deploy/` y variable `OPENAGNO_ROOT` obligatoria en prod.
+- **Wizard CLI** que genere carpeta `integrations/<nombre>/` desde plantilla.
+- Tests automaticos de `merge_tools_config_with_integrations` / MCP con fixtures YAML.
+- Corregir upstream Agno: manejo de errores async en `ClientResponse.text` (mensajes 429 ilegibles).
+- Aplicar el mismo patron de integraciones a **sub-agentes** si se requiere configuracion por agente.
+
+**Seguimiento en Linear:** [DAT-221](https://linear.app/datatensei/issue/DAT-221/openagno-resumen-cambios-marzo-2026-deuda-y-mejoras-siguientes-fases) (backlog de mejores y deuda tecnica).
+
+---
+
 ## Features
 
 | Feature | Descripcion |
@@ -351,6 +385,8 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 | Admin programatico | Gestiona sesiones, memorias, knowledge via CLI |
 | Validacion automatica | Verifica workspace, sub-agentes y teams al arrancar |
 | Registry con tools | Studio puede asignar DuckDuckGo y Crawl4AI a agentes |
+| Integraciones por carpeta | `workspace/integrations/` fusionada con tools y MCP al arrancar |
+| Runbook + Shell opt-in | Operaciones y personalizacion documentadas para el agente |
 
 ---
 
@@ -380,8 +416,9 @@ OpenAgno/
     instructions.md          # Personalidad del agente
     tools.yaml               # Herramientas
     mcp.yaml                 # Servidores MCP
+    integrations/            # Manifiestos por integracion (YAML + config.env opcional)
     knowledge/
-      docs/                  # Documentos para RAG
+      docs/                  # Documentos para RAG + AGENT_OPERACIONES.md
       urls.yaml              # URLs para ingestion
     agents/
       research_agent.yaml    # Sub-agente de investigacion

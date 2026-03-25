@@ -12,8 +12,12 @@ anthropic
 
 # Tools
 duckduckgo-search
+ddgs
 crawl4ai
 tavily-python
+
+# AgentOS MCP embebido (gateway con enable_mcp_server)
+fastmcp
 
 # Base de datos
 psycopg[binary]

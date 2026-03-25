@@ -9,7 +9,9 @@ Lee archivos YAML/MD del workspace/ y construye:
 - Knowledge base con PgVector/Supabase
 - Auto-ingesta de documentos y URLs
 - Configuracion de canales (WhatsApp, Slack, Web)
+- Integraciones declarativas en workspace/integrations/*/integration.yaml + config.env
 """
+import copy
 import os
 import re
 import yaml
@@ -36,6 +38,9 @@ from agno.utils.log import logger
 load_dotenv()
 
 WORKSPACE_DIR = Path(os.getenv("AGNOBOT_WORKSPACE", "workspace"))
+
+# Raiz del repo OpenAgno (directorio que contiene gateway.py y loader.py)
+_OPENAGNO_REPO_ROOT = Path(__file__).resolve().parent
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
@@ -72,6 +77,148 @@ def load_yaml(filename: str) -> dict[str, Any]:
 		return {}
 	with open(path, "r", encoding="utf-8") as f:
 		return yaml.safe_load(f) or {}
+
+
+def load_integration_manifests(ws: Path) -> list[tuple[Path, dict[str, Any]]]:
+	"""
+	Lee workspace/integrations/<id>/integration.yaml.
+	Retorna lista (directorio_integracion, manifest_dict).
+	"""
+	integ_root = ws / "integrations"
+	if not integ_root.is_dir():
+		return []
+	out: list[tuple[Path, dict[str, Any]]] = []
+	for sub in sorted(integ_root.iterdir()):
+		if not sub.is_dir() or sub.name.startswith("."):
+			continue
+		manifest_path = sub / "integration.yaml"
+		if not manifest_path.is_file():
+			continue
+		try:
+			raw = manifest_path.read_text(encoding="utf-8")
+			data = yaml.safe_load(raw) or {}
+		except yaml.YAMLError as e:
+			logger.warning(f"integrations/{sub.name}/integration.yaml YAML invalido: {e}")
+			continue
+		if not isinstance(data, dict):
+			continue
+		out.append((sub, data))
+	return out
+
+
+def preload_integration_environments(manifests: list[tuple[Path, dict[str, Any]]]) -> None:
+	"""Carga archivos env de cada integracion habilitada (override=False respecto al .env raiz)."""
+	for integ_dir, data in manifests:
+		if not data.get("enabled", True):
+			continue
+		env_files = data.get("env_files")
+		if env_files is None:
+			if "env_file" in data and not data["env_file"]:
+				env_files = []
+			else:
+				single = data.get("env_file", "config.env")
+				env_files = [single] if single else []
+		if not isinstance(env_files, list):
+			env_files = [env_files]
+		for rel in env_files:
+			if not rel or not isinstance(rel, str):
+				continue
+			fp = integ_dir / rel
+			if fp.is_file():
+				load_dotenv(fp, override=False)
+				iid = data.get("id", integ_dir.name)
+				logger.info(f"Integracion '{iid}': variables desde {fp.name}")
+
+
+def _enable_optional_in_merged(
+	optional: list[dict[str, Any]],
+	by_name: dict[str, dict[str, Any]],
+	name: str,
+	extra_config: dict[str, Any],
+) -> None:
+	if name in by_name:
+		entry = by_name[name]
+		entry["enabled"] = True
+		cfg = entry.setdefault("config", {})
+		if isinstance(cfg, dict) and isinstance(extra_config, dict):
+			cfg.update(extra_config)
+	else:
+		new_e: dict[str, Any] = {"name": name, "enabled": True, "config": dict(extra_config) if extra_config else {}}
+		optional.append(new_e)
+		by_name[name] = new_e
+
+
+def merge_tools_config_with_integrations(
+	tools_config: dict[str, Any],
+	manifests: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, Any]:
+	"""Fusiona tools.yaml con optional_tool / optional_tools declarados en integraciones."""
+	merged = copy.deepcopy(tools_config)
+	optional = merged.setdefault("optional", [])
+	by_name: dict[str, dict[str, Any]] = {}
+	for od in optional:
+		n = od.get("name")
+		if isinstance(n, str):
+			by_name[n] = od
+
+	for _integ_dir, data in manifests:
+		if not data.get("enabled", True):
+			continue
+		ot = data.get("optional_tool")
+		if isinstance(ot, str):
+			_enable_optional_in_merged(
+				optional, by_name, ot, data.get("tool_config") or {}
+			)
+		ots = data.get("optional_tools")
+		if isinstance(ots, list):
+			for item in ots:
+				if isinstance(item, str):
+					_enable_optional_in_merged(optional, by_name, item, {})
+				elif isinstance(item, dict):
+					nm = item.get("name")
+					if isinstance(nm, str):
+						_enable_optional_in_merged(
+							optional, by_name, nm, item.get("config") or {}
+						)
+	return merged
+
+
+def merge_mcp_config_with_integrations(
+	mcp_config: dict[str, Any],
+	manifests: list[tuple[Path, dict[str, Any]]],
+) -> dict[str, Any]:
+	"""Anade o sobrescribe entradas de mcp.yaml desde integraciones."""
+	merged = copy.deepcopy(mcp_config)
+	servers = merged.setdefault("servers", [])
+	by_name: dict[str, dict[str, Any]] = {}
+	for s in servers:
+		n = s.get("name")
+		if isinstance(n, str):
+			by_name[n] = s
+
+	for _integ_dir, data in manifests:
+		if not data.get("enabled", True):
+			continue
+		blocks: list[dict[str, Any]] = []
+		m = data.get("mcp")
+		if isinstance(m, dict):
+			blocks.append(m)
+		ms = data.get("mcp_servers")
+		if isinstance(ms, list):
+			blocks.extend(b for b in ms if isinstance(b, dict))
+		for raw in blocks:
+			block = _resolve_config(copy.deepcopy(raw))
+			sname = block.get("name") or data.get("id")
+			if not isinstance(sname, str) or not sname:
+				sname = "integration-mcp"
+			block["name"] = sname
+			block.setdefault("enabled", True)
+			if sname in by_name:
+				by_name[sname].update(block)
+			else:
+				servers.append(block)
+				by_name[sname] = block
+	return merged
 
 
 def load_instructions() -> list[str]:
@@ -191,7 +338,13 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 			case "shell":
 				from agno.tools.shell import ShellTools
 				logger.warning("ShellTools activado - riesgo de seguridad")
-				tools.append(ShellTools())
+				raw_base = config.get("base_dir")
+				base_path: Path
+				if isinstance(raw_base, str) and raw_base.strip():
+					base_path = Path(raw_base).expanduser().resolve()
+				else:
+					base_path = _OPENAGNO_REPO_ROOT
+				tools.append(ShellTools(base_dir=base_path))
 			case _:
 				logger.warning(f"Tool opcional desconocido: {name}")
 
@@ -475,8 +628,14 @@ def load_workspace() -> dict[str, Any]:
 	necesarios para construir el AgentOS.
 	"""
 	config = load_yaml("config.yaml")
-	tools_config = load_yaml("tools.yaml")
-	mcp_config = load_yaml("mcp.yaml")
+	integration_manifests = load_integration_manifests(WORKSPACE_DIR)
+	preload_integration_environments(integration_manifests)
+	tools_config = merge_tools_config_with_integrations(
+		load_yaml("tools.yaml"), integration_manifests
+	)
+	mcp_config = merge_mcp_config_with_integrations(
+		load_yaml("mcp.yaml"), integration_manifests
+	)
 
 	db_config = config.get("database", {})
 	db_url = build_db_url(db_config)

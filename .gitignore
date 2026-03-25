@@ -16,6 +16,7 @@ ENV/
 
 # Environment variables
 .env
+workspace/integrations/**/config.env
 
 # IDE
 .vscode/
@@ -30,6 +31,9 @@ Thumbs.db
 
 # Docker
 pgdata/
+
+# Backups locales del runbook (tar / .bak)
+backups/
 
 # Temporary files
 tmp/

@@ -15,6 +15,13 @@ from typing import Optional
 import yaml
 from dotenv import load_dotenv
 
+from loader import (
+	load_integration_manifests,
+	merge_mcp_config_with_integrations,
+	merge_tools_config_with_integrations,
+	preload_integration_environments,
+)
+
 load_dotenv()
 
 
@@ -98,6 +105,11 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 	except yaml.YAMLError as e:
 		errors.append(f"tools.yaml tiene YAML invalido: {e}")
 		return errors
+
+	ws_resolved = ws.resolve()
+	integration_manifests = load_integration_manifests(ws_resolved)
+	preload_integration_environments(integration_manifests)
+	tools_config = merge_tools_config_with_integrations(tools_config, integration_manifests)
 
 	for tool_def in tools_config.get("optional", []):
 		if not tool_def.get("enabled", False):
@@ -208,6 +220,8 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 	except (yaml.YAMLError, FileNotFoundError):
 		mcp_config = {}
 
+	mcp_config = merge_mcp_config_with_integrations(mcp_config, integration_manifests)
+
 	tavily_mcp_enabled = False
 	for server in mcp_config.get("servers", []):
 		if not server.get("enabled", False):
@@ -235,10 +249,45 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 			tavily_tool_enabled = True
 
 	if (tavily_tool_enabled or tavily_mcp_enabled) and not os.getenv("TAVILY_API_KEY"):
-		if not tavily_tool_enabled:
-			errors.append(".env: falta TAVILY_API_KEY (Tavily MCP habilitado)")
+		errors.append(".env: falta TAVILY_API_KEY (Tavily tool o MCP habilitado)")
 
 	return errors
+
+
+def workspace_warnings(workspace_dir: Optional[str] = None) -> list[str]:
+	"""
+	Advertencias no bloqueantes (p. ej. ShellTools habilitado).
+	"""
+	ws = Path(workspace_dir or os.getenv("AGNOBOT_WORKSPACE", "workspace"))
+	warnings: list[str] = []
+	tools_path = ws / "tools.yaml"
+	if not tools_path.exists():
+		return warnings
+	try:
+		with open(tools_path, "r", encoding="utf-8") as f:
+			tools_config = yaml.safe_load(f) or {}
+	except yaml.YAMLError:
+		return warnings
+
+	ws_resolved = ws.resolve()
+	manifests = load_integration_manifests(ws_resolved)
+	tools_config = merge_tools_config_with_integrations(tools_config, manifests)
+
+	for tool_def in tools_config.get("optional", []):
+		if tool_def.get("name") != "shell" or not tool_def.get("enabled", False):
+			continue
+		warnings.append(
+			"ShellTools habilitado: riesgo elevado; el cwd del subprocess esta acotado por base_dir. "
+			"Define OPENAGNO_ROOT en .env con la ruta absoluta del repo. "
+			"Sigue workspace/knowledge/docs/AGENT_OPERACIONES.md para backup, validacion y reinicio."
+		)
+		if not os.getenv("OPENAGNO_ROOT", "").strip():
+			warnings.append(
+				"OPENAGNO_ROOT no definida: el loader usara la raiz del repo inferida desde loader.py."
+			)
+		break
+
+	return warnings
 
 
 def print_validation(errors: list[str]) -> None:
@@ -258,4 +307,6 @@ def print_validation(errors: list[str]) -> None:
 if __name__ == "__main__":
 	errors = validate_workspace()
 	print_validation(errors)
+	for w in workspace_warnings():
+		print(f"  Advertencia: {w}")
 	sys.exit(1 if errors else 0)

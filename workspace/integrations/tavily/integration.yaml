@@ -1,0 +1,18 @@
+# Integracion Tavily — activa con enabled: true y define TAVILY_API_KEY
+# (en config.env de esta carpeta o en el .env raiz del repo)
+
+id: tavily
+enabled: true
+
+# Vacio: no cargar config.env aqui; usa variables del .env raiz.
+# Si quieres claves solo por integracion: env_file: config.env
+env_file: config.env
+
+optional_tool: tavily
+
+# Descomenta para habilitar tambien el MCP Tavily (misma API key)
+# mcp:
+#   name: tavily
+#   transport: streamable-http
+#   url: "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_API_KEY}"
+#   enabled: true
