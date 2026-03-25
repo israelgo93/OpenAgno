@@ -89,6 +89,8 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 	if "slack" in channels:
 		if not os.getenv("SLACK_TOKEN"):
 			errors.append(".env: falta SLACK_TOKEN (requerido para canal Slack)")
+		if not os.getenv("SLACK_SIGNING_SECRET"):
+			errors.append(".env: falta SLACK_SIGNING_SECRET (requerido para canal Slack)")
 
 	try:
 		with open(ws / "tools.yaml", "r", encoding="utf-8") as f:
@@ -113,6 +115,53 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 		dir_path = ws / d
 		if not dir_path.exists():
 			errors.append(f"Falta directorio workspace/{d}/")
+
+	agents_dir = ws / "agents"
+	if agents_dir.exists():
+		for yaml_file in agents_dir.glob("*.yaml"):
+			if yaml_file.name == "teams.yaml":
+				continue
+			try:
+				with open(yaml_file, "r", encoding="utf-8") as f:
+					agent_data = yaml.safe_load(f) or {}
+				agent_def = agent_data.get("agent", {})
+				if not agent_def:
+					errors.append(f"agents/{yaml_file.name}: falta seccion 'agent'")
+					continue
+				if not agent_def.get("name"):
+					errors.append(f"agents/{yaml_file.name}: falta 'name'")
+				if not agent_def.get("id"):
+					errors.append(f"agents/{yaml_file.name}: falta 'id'")
+				sub_model = agent_def.get("model", {})
+				sub_provider = sub_model.get("provider", "")
+				if sub_provider in key_map:
+					sub_key = key_map[sub_provider]
+					if not os.getenv(sub_key):
+						errors.append(
+							f"agents/{yaml_file.name}: .env falta {sub_key} "
+							f"(requerido para provider '{sub_provider}')"
+						)
+			except yaml.YAMLError as e:
+				errors.append(f"agents/{yaml_file.name}: YAML invalido: {e}")
+
+	teams_file = ws / "agents" / "teams.yaml"
+	if teams_file.exists():
+		try:
+			with open(teams_file, "r", encoding="utf-8") as f:
+				teams_data = yaml.safe_load(f) or {}
+			for team in teams_data.get("teams", []):
+				team_name = team.get("name", "sin nombre")
+				members = team.get("members", [])
+				if len(members) < 2:
+					errors.append(
+						f"teams.yaml: team '{team_name}' necesita al menos 2 miembros"
+					)
+				if not team.get("model"):
+					errors.append(
+						f"teams.yaml: team '{team_name}' no tiene modelo configurado"
+					)
+		except yaml.YAMLError as e:
+			errors.append(f"teams.yaml: YAML invalido: {e}")
 
 	return errors
 

@@ -1,0 +1,33 @@
+# ===================================
+# Sub-Agente: Investigador
+# ===================================
+
+agent:
+  name: "Research Agent"
+  id: "research-agent"
+  role: "Realiza busquedas web profundas y sintetiza informacion"
+
+  model:
+    provider: "google"
+    id: "gemini-2.0-flash"
+
+  tools:
+    - duckduckgo
+    - crawl4ai
+    - reasoning
+
+  instructions:
+    - "Eres un agente especializado en investigacion profunda."
+    - "Busca en la web, scrapea paginas relevantes y sintetiza la informacion."
+    - "Siempre cita tus fuentes con URLs completas."
+    - "Se conciso pero completo en tus reportes."
+    - "Si una busqueda no da resultados, intenta con terminos alternativos."
+
+  config:
+    tool_call_limit: 5
+    enable_agentic_memory: false
+    add_datetime_to_context: true
+    markdown: true
+
+execution:
+  type: "local"

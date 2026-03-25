@@ -2,7 +2,9 @@
 Loader - Carga dinamica del workspace y construye objetos Agno.
 
 Lee archivos YAML/MD del workspace/ y construye:
-- Agentes con sus tools, instrucciones y MCP
+- Agente principal con tools, instrucciones y MCP
+- Sub-agentes desde workspace/agents/*.yaml
+- Teams multi-agente desde workspace/agents/teams.yaml
 - Knowledge base con PgVector/Supabase
 - Configuracion de canales (WhatsApp, Slack, Web)
 """
@@ -15,6 +17,8 @@ from typing import Any, Optional, Union
 from dotenv import load_dotenv
 
 from agno.agent import Agent
+from agno.team import Team
+from agno.team.mode import TeamMode
 from agno.db.postgres import PostgresDb
 from agno.db.sqlite import SqliteDb
 from agno.knowledge.knowledge import Knowledge
@@ -239,6 +243,162 @@ def build_model(model_config: dict[str, Any]) -> Any:
 			raise ValueError(f"Proveedor de modelo no soportado: {provider}")
 
 
+TEAM_MODE_MAP: dict[str, TeamMode] = {
+	"coordinate": TeamMode.coordinate,
+	"route": TeamMode.route,
+	"broadcast": TeamMode.broadcast,
+	"tasks": TeamMode.tasks,
+}
+
+
+def build_sub_agents(
+	db: Union[PostgresDb, SqliteDb],
+	knowledge: Optional[Knowledge],
+) -> list[Agent]:
+	"""
+	Carga sub-agentes desde workspace/agents/*.yaml.
+	Excluye teams.yaml (procesado por build_teams).
+	"""
+	agents: list[Agent] = []
+	agents_dir = WORKSPACE_DIR / "agents"
+	if not agents_dir.exists():
+		return agents
+
+	excluded = {"teams.yaml"}
+
+	for yaml_file in sorted(agents_dir.glob("*.yaml")):
+		if yaml_file.name in excluded:
+			continue
+
+		try:
+			data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+		except yaml.YAMLError as e:
+			logger.warning(f"YAML invalido en {yaml_file.name}: {e}")
+			continue
+
+		agent_def = data.get("agent", {})
+		if not agent_def:
+			logger.warning(f"Sin definicion 'agent' en {yaml_file.name}")
+			continue
+
+		model_cfg = agent_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
+		try:
+			model = build_model(model_cfg)
+		except ValueError as e:
+			logger.warning(f"Modelo invalido en {yaml_file.name}: {e}")
+			continue
+
+		agent_tools: list[Union[DuckDuckGoTools, Crawl4aiTools, ReasoningTools]] = []
+		for tool_name in agent_def.get("tools", []):
+			factory = BUILTIN_TOOL_MAP.get(tool_name)
+			if factory is not None:
+				agent_tools.append(factory({}))
+			else:
+				logger.warning(f"Tool '{tool_name}' no reconocido en {yaml_file.name}")
+
+		config = agent_def.get("config", {})
+
+		sub_memory_manager = None
+		if config.get("enable_agentic_memory", False):
+			sub_memory_manager = MemoryManager(model=model, db=db)
+
+		agent = Agent(
+			name=agent_def.get("name", "Sub Agent"),
+			id=agent_def.get("id", yaml_file.stem),
+			role=agent_def.get("role", ""),
+			model=model,
+			db=db,
+			knowledge=knowledge,
+			search_knowledge=knowledge is not None,
+			tools=agent_tools,
+			instructions=agent_def.get("instructions", []),
+			memory_manager=sub_memory_manager,
+			enable_agentic_memory=config.get("enable_agentic_memory", False),
+			tool_call_limit=config.get("tool_call_limit", 3),
+			add_datetime_to_context=config.get("add_datetime_to_context", True),
+			markdown=config.get("markdown", True),
+		)
+		agents.append(agent)
+		logger.info(f"Sub-agente cargado: {agent.name} ({agent.id})")
+
+	return agents
+
+
+def build_teams(
+	all_agents: list[Agent],
+	db: Union[PostgresDb, SqliteDb],
+) -> list[Team]:
+	"""
+	Carga Teams desde workspace/agents/teams.yaml.
+	Resuelve miembros por ID contra la lista de agentes disponibles.
+	"""
+	teams_data = load_yaml("agents/teams.yaml")
+	teams_list = teams_data.get("teams", [])
+	if not teams_list:
+		return []
+
+	agent_index: dict[str, Agent] = {a.id: a for a in all_agents if a.id}
+
+	teams: list[Team] = []
+
+	for team_def in teams_list:
+		team_name = team_def.get("name", "Unnamed Team")
+
+		member_ids: list[str] = team_def.get("members", [])
+		members: list[Agent] = []
+		for mid in member_ids:
+			agent = agent_index.get(mid)
+			if agent is not None:
+				members.append(agent)
+			else:
+				logger.warning(
+					f"Team '{team_name}': miembro '{mid}' no encontrado. "
+					f"Disponibles: {list(agent_index.keys())}"
+				)
+
+		if len(members) < 2:
+			logger.warning(
+				f"Team '{team_name}' necesita al menos 2 miembros, "
+				f"tiene {len(members)}. Omitido."
+			)
+			continue
+
+		model_cfg = team_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
+		try:
+			model = build_model(model_cfg)
+		except ValueError as e:
+			logger.warning(f"Modelo invalido en team '{team_name}': {e}")
+			continue
+
+		mode_str = team_def.get("mode", "coordinate")
+		mode = TEAM_MODE_MAP.get(mode_str)
+		if mode is None:
+			logger.warning(
+				f"Team '{team_name}': modo '{mode_str}' no valido. "
+				f"Opciones: {list(TEAM_MODE_MAP.keys())}. Usando 'coordinate'."
+			)
+			mode = TeamMode.coordinate
+
+		team = Team(
+			name=team_name,
+			id=team_def.get("id", team_name.lower().replace(" ", "-")),
+			mode=mode,
+			members=members,
+			model=model,
+			db=db,
+			instructions=team_def.get("instructions", []),
+			markdown=True,
+			enable_agentic_memory=team_def.get("enable_agentic_memory", False),
+		)
+		teams.append(team)
+		logger.info(
+			f"Team cargado: {team.name} ({team.id}) — "
+			f"modo={mode_str}, miembros={[m.id for m in members]}"
+		)
+
+	return teams
+
+
 def load_workspace() -> dict[str, Any]:
 	"""
 	Carga completa del workspace - retorna un dict con todos los objetos
@@ -289,12 +449,18 @@ def load_workspace() -> dict[str, Any]:
 		markdown=True,
 	)
 
+	sub_agents = build_sub_agents(db, knowledge)
+	all_agents = [main_agent] + sub_agents
+	teams = build_teams(all_agents, db)
+
 	return {
 		"config": config,
 		"db_url": db_url,
 		"db": db,
 		"knowledge": knowledge,
 		"main_agent": main_agent,
+		"sub_agents": sub_agents,
+		"teams": teams,
 		"mcp_config": mcp_config,
 		"tools_config": tools_config,
 	}

@@ -1,16 +1,22 @@
 # ===================================
 # Teams - Equipos Multi-Agente
 # ===================================
+# Modos: coordinate | route | broadcast | tasks
+# Referencia: https://docs.agno.com/teams/building-teams
 
-teams: []
-  # - name: "Research Team"
-  #   id: "research-team"
-  #   mode: "coordinate"
-  #   members:
-  #     - research-agent
-  #     - agnobot-main
-  #   model:
-  #     provider: "google"
-  #     id: "gemini-2.0-flash"
-  #   instructions:
-  #     - "Coordina entre los agentes para dar la mejor respuesta."
+teams:
+  - name: "Research Team"
+    id: "research-team"
+    mode: "coordinate"
+    members:
+      - agnobot-main
+      - research-agent
+    model:
+      provider: "google"
+      id: "gemini-2.0-flash"
+    instructions:
+      - "Coordina entre el agente principal y el agente de investigacion."
+      - "Usa el agente de investigacion para busquedas web profundas."
+      - "El agente principal sintetiza y responde al usuario."
+      - "Responde en el idioma del usuario."
+    enable_agentic_memory: false

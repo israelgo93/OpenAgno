@@ -283,8 +283,51 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	}
 	_write_yaml(workspace_dir / "mcp.yaml", mcp)
 
+	# --- agents/research_agent.yaml ---
+	research = {
+		"agent": {
+			"name": "Research Agent",
+			"id": "research-agent",
+			"role": "Realiza busquedas web profundas y sintetiza informacion",
+			"model": {"provider": provider, "id": model_id},
+			"tools": ["duckduckgo", "crawl4ai", "reasoning"],
+			"instructions": [
+				"Eres un agente especializado en investigacion profunda.",
+				"Busca en la web, scrapea paginas y sintetiza informacion.",
+				"Siempre cita tus fuentes con URLs completas.",
+				"Se conciso pero completo.",
+			],
+			"config": {
+				"tool_call_limit": 5,
+				"enable_agentic_memory": False,
+				"add_datetime_to_context": True,
+				"markdown": True,
+			},
+		},
+		"execution": {"type": "local"},
+	}
+	_write_yaml(workspace_dir / "agents" / "research_agent.yaml", research)
+
 	# --- agents/teams.yaml ---
-	_write_yaml(workspace_dir / "agents" / "teams.yaml", {"teams": []})
+	teams = {
+		"teams": [
+			{
+				"name": "Research Team",
+				"id": "research-team",
+				"mode": "coordinate",
+				"members": ["agnobot-main", "research-agent"],
+				"model": {"provider": provider, "id": model_id},
+				"instructions": [
+					"Coordina entre el agente principal y el agente de investigacion.",
+					"Usa el agente de investigacion para busquedas web profundas.",
+					"El agente principal sintetiza y responde al usuario.",
+					"Responde en el idioma del usuario.",
+				],
+				"enable_agentic_memory": False,
+			}
+		]
+	}
+	_write_yaml(workspace_dir / "agents" / "teams.yaml", teams)
 
 	# --- schedules.yaml ---
 	_write_yaml(workspace_dir / "schedules.yaml", {"schedules": []})
@@ -354,7 +397,7 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	print(f"  workspace/tools.yaml     - Herramientas")
 	print(f"  workspace/mcp.yaml       - Servidores MCP")
 	print(f"  workspace/knowledge/     - Documentos RAG")
-	print(f"  workspace/agents/        - Sub-agentes")
+	print(f"  workspace/agents/        - Sub-agentes y Teams")
 	print(f"  .env                     - Secretos")
 
 	if errors:

@@ -1,6 +1,8 @@
 """
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.
+
+Fase 3: Sub-agentes, Teams, Slack, Studio mejorado.
 """
 import os
 
@@ -23,11 +25,13 @@ ws = load_workspace()
 config = ws["config"]
 db = ws["db"]
 main_agent = ws["main_agent"]
+sub_agents = ws["sub_agents"]
+teams = ws["teams"]
 knowledge = ws["knowledge"]
 
 base_app = FastAPI(
 	title=config.get("agentos", {}).get("name", "AgnoBot Platform"),
-	version="0.1.0",
+	version="0.3.0",
 )
 base_app.add_middleware(
 	CORSMiddleware,
@@ -60,20 +64,31 @@ logger.info("Canal Web disponible via os.agno.com (Control Plane)")
 studio_config = config.get("studio", {})
 registry = None
 if studio_config.get("enabled", True) and not ws["db_url"].startswith("sqlite"):
+	all_models = [main_agent.model]
+	for sa in sub_agents:
+		if sa.model not in all_models:
+			all_models.append(sa.model)
+
 	registry = Registry(
 		name="AgnoBot Registry",
 		tools=[],
-		models=[main_agent.model],
+		models=all_models,
 		dbs=[db],
 	)
 	logger.info("Studio Registry configurado")
+
+all_agents = [main_agent] + sub_agents
+logger.info(f"Agentes cargados: {[a.id for a in all_agents]}")
+if teams:
+	logger.info(f"Teams cargados: {[t.id for t in teams]}")
 
 os_config = config.get("agentos", {})
 
 agent_os = AgentOS(
 	id=os_config.get("id", "agnobot-gateway"),
 	name=os_config.get("name", "AgnoBot Platform"),
-	agents=[main_agent],
+	agents=all_agents,
+	teams=teams if teams else None,
 	interfaces=interfaces,
 	knowledge=[knowledge] if knowledge else None,
 	db=db,
