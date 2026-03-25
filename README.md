@@ -75,57 +75,119 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 
 ## Quickstart
 
-### 1. Clonar e instalar
+### Setup rapido (un solo comando)
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
 cd OpenAgno
-python -m venv .venv && source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate  # Windows
+bash setup.sh
+```
+
+`setup.sh` hace todo automaticamente: crea entorno virtual, instala dependencias, lanza el wizard de configuracion y valida el workspace.
+
+### Setup manual (paso a paso)
+
+```bash
+# 1. Clonar e instalar
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-### 2. Configurar
-
-**Opcion A** — Wizard interactivo (recomendado):
-
-```bash
+# 2. Configurar (wizard interactivo)
 python -m management.cli
-```
 
-El wizard genera `workspace/`, `.env` y valida automaticamente. Soporta Gemini, Claude (directo y Bedrock), GPT, Amazon Nova.
-
-**Opcion B** — Manual:
-
-```bash
-cp .env.example .env
-# Editar .env con tus API keys y credenciales
-```
-
-### 3. Validar (opcional)
-
-```bash
+# 3. Validar
 python -m management.validator
-```
 
-Verifica estructura, variables de entorno, sub-agentes, teams, schedules, URLs, MCP y credenciales AWS.
-
-### 4. Ejecutar
-
-```bash
-# Ejecucion directa
-python gateway.py
-
-# Como servicio daemon (F6 — reinicio automatico + hot-reload)
-python service_manager.py start
-
-# Con PostgreSQL local (desarrollo)
-docker compose up -d db
+# 4. Ejecutar
 python gateway.py
 ```
 
 El agente estara disponible en `http://localhost:8000`.
 Conecta desde [os.agno.com](https://os.agno.com) > Add OS > Local.
+
+---
+
+## Referencia completa de comandos
+
+### Ciclo de vida del servicio
+
+| Comando | Descripcion |
+|---------|-------------|
+| `python gateway.py` | Iniciar gateway en primer plano (desarrollo) |
+| `python service_manager.py start` | Iniciar como daemon en segundo plano |
+| `python service_manager.py stop` | Detener el daemon y el gateway |
+| `python service_manager.py restart` | Reiniciar el daemon y el gateway |
+| `python service_manager.py status` | Ver PID y health check del gateway |
+
+### Configuracion y validacion
+
+| Comando | Descripcion |
+|---------|-------------|
+| `bash setup.sh` | Setup completo: venv + deps + wizard + validacion |
+| `python -m management.cli` | Wizard de onboarding (genera workspace + .env) |
+| `python -m management.validator` | Validar workspace, API keys, canales, AWS |
+
+### Administracion en tiempo real
+
+| Comando | Descripcion |
+|---------|-------------|
+| `python -m management.admin status` | Estado del AgentOS (agentes, teams, config) |
+| `python -m management.admin sessions --user ID` | Listar sesiones de un usuario |
+| `python -m management.admin memories --user ID` | Ver memorias de un usuario |
+| `python -m management.admin run --agent ID --message "..."` | Ejecutar agente directamente |
+| `python -m management.admin run --agent ID --message "..." --stream` | Ejecutar con streaming |
+| `python -m management.admin knowledge-search --query "..."` | Buscar en Knowledge Base |
+| `python -m management.admin create-memory --user ID --memory "..."` | Crear memoria manualmente |
+
+### Endpoints HTTP administrativos
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/admin/health` | Health check: version, agentes, teams, modelo, scheduler |
+| `POST` | `/admin/reload` | Solicitar hot-reload al daemon (no mata sesiones) |
+
+Ejemplos:
+
+```bash
+# Health check
+curl http://localhost:8000/admin/health
+
+# Solicitar reload (el daemon reinicia el gateway)
+curl -X POST http://localhost:8000/admin/reload
+
+# Crear schedule via API nativa
+curl -X POST http://localhost:8000/schedules \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Resumen","cron_expr":"0 9 * * 1-5","endpoint":"/agents/agnobot-main/runs","method":"POST","payload":{"message":"Genera resumen"},"timezone":"America/Guayaquil"}'
+
+# Listar schedules
+curl http://localhost:8000/schedules
+```
+
+### Deploy en produccion (systemd)
+
+```bash
+# Copiar archivos al servidor
+sudo cp deploy/openagno.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable openagno
+sudo systemctl start openagno
+
+# Administrar servicio
+sudo systemctl status openagno    # Estado
+sudo systemctl restart openagno   # Reiniciar
+sudo systemctl stop openagno      # Detener
+sudo journalctl -u openagno -f    # Ver logs
+```
+
+### Docker (base de datos local)
+
+| Comando | Descripcion |
+|---------|-------------|
+| `docker compose up -d db` | Iniciar PostgreSQL + pgvector local |
+| `docker compose down` | Detener PostgreSQL local |
 
 ---
 
@@ -468,6 +530,7 @@ OpenAgno/
     phase3_validation_phase4_plan.md
     phase4_validation_phase5_plan.md
     phase5_validation_phase6_plan_CORRECTED.md
+  setup.sh                   # Setup rapido: venv + deps + wizard + validacion
   .env.example               # Template de variables (incluye AWS)
   requirements.txt           # Dependencias (incluye boto3)
   docker-compose.yml         # PostgreSQL pgvector local

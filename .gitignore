@@ -46,3 +46,7 @@ workspace/knowledge/docs/*.docx
 
 # Logs
 *.log
+
+# Service Manager (F6)
+openagno.pid
+.reload_requested
