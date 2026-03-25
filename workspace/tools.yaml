@@ -38,8 +38,10 @@ optional:
     enabled: false
 
   - name: shell
-    enabled: false
-    # Riesgo de seguridad: ejecuta comandos sin confirmacion
+    enabled: true
+    # Riesgo de seguridad: ejecuta comandos sin confirmacion; cwd acotado a base_dir
+    config:
+      base_dir: "${OPENAGNO_ROOT}"
 
 # Toolkits personalizados (archivos Python en tools/)
 custom: []

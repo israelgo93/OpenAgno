@@ -11,11 +11,11 @@ agent:
 # Modelo de IA
 model:
   provider: "google"        # google | openai | anthropic
-  id: "gemini-2.0-flash"    # ID especifico del modelo
+  id: "gemini-2.5-flash"    # ID especifico del modelo (antes gemini-2.0-flash)
 
 # Base de datos
 database:
-  type: "supabase"          # supabase | local | sqlite
+  type: "sqlite"            # supabase | local | sqlite (sqlite: primera prueba sin Docker/Supabase)
   knowledge_table: "agnobot_knowledge_contents"
   vector_table: "agnobot_knowledge_vectors"
 
@@ -25,10 +25,8 @@ vector:
   embedder: "text-embedding-3-small"
   max_results: 5
 
-# Canales habilitados
-channels:
-  - whatsapp
-  - slack
+# Canales habilitados (vacio = solo Web/Studio; reactiva whatsapp/slack cuando tengas tokens en .env)
+channels: []
 
 # Memoria
 memory:
