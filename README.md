@@ -7,7 +7,7 @@
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://docs.agno.com"><img src="https://img.shields.io/badge/Agno-Framework-6366F1?style=flat-square" alt="Agno"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Status-MVP-orange?style=flat-square" alt="Status"></a>
+    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-2_Completada-green?style=flat-square" alt="Status"></a>
   </p>
 </p>
 
@@ -21,10 +21,12 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
 
 - **Configuracion sin codigo** — Define tu agente con archivos YAML y Markdown
 - **Multimodal** — Procesa texto, imagenes, video y audio
-- **Memoria persistente** — Recuerda contexto entre sesiones con PostgresDb
+- **Memoria persistente** — MemoryManager + PostgresDb para memoria agentic entre sesiones
 - **RAG hibrido** — Busqueda semantica + keyword con PgVector
 - **Multi-canal** — WhatsApp, Slack y Web desde un unico gateway
 - **Autonomia via MCP** — El agente consulta la documentacion de Agno por si mismo
+- **CLI de Onboarding** — Genera workspace completo con un wizard interactivo
+- **Admin programatico** — Gestiona sesiones, memorias y knowledge via CLI o codigo
 
 ---
 
@@ -41,6 +43,7 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
      +---------v-----------+
      |   Gateway (AgentOS)  |
      |   FastAPI + CORS     |
+     |   + Validacion auto  |
      +---------+------------+
                |
      +---------v------------+
@@ -48,7 +51,7 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
      |   - Gemini/Claude/GPT |
      |   - Tools (DuckDuckGo, Crawl4AI, Reasoning)
      |   - MCP (docs.agno.com)
-     |   - Memoria Agentic   |
+     |   - MemoryManager     |
      +---------+-------------+
                |
      +---------v-------------+
@@ -76,18 +79,36 @@ pip install -r requirements.txt
 
 ### 2. Configurar
 
+**Opcion A** — Wizard interactivo (recomendado):
+
 ```bash
-cp .env.example .env
-# Editar .env con tus API keys y credenciales de base de datos
+python -m management.cli
 ```
 
-### 3. Ejecutar
+El wizard genera `workspace/`, `.env` y valida la configuracion automaticamente.
+
+**Opcion B** — Manual:
 
 ```bash
-# Opcion A: Con Supabase (produccion)
+cp .env.example .env
+# Editar .env con tus API keys y credenciales
+```
+
+### 3. Validar (opcional)
+
+```bash
+python -m management.validator
+```
+
+Verifica que el workspace tenga la estructura correcta y las variables de entorno necesarias.
+
+### 4. Ejecutar
+
+```bash
+# Con Supabase (produccion)
 python gateway.py
 
-# Opcion B: Con PostgreSQL local (desarrollo)
+# Con PostgreSQL local (desarrollo)
 docker compose up -d db
 python gateway.py
 ```
@@ -115,19 +136,80 @@ Modifica cualquier archivo y reinicia para aplicar los cambios.
 
 ---
 
+## Management CLI
+
+OpenAgno incluye un modulo de gestion completo:
+
+### Onboarding — Genera workspace desde cero
+
+```bash
+python -m management.cli
+```
+
+Wizard interactivo de 6 pasos: identidad, modelo, base de datos, canales, tools y embeddings.
+
+### Validacion — Verifica configuracion
+
+```bash
+python -m management.validator
+```
+
+Valida archivos requeridos, secciones en YAML, API keys, variables de DB y canales.
+
+### Admin — Gestiona el agente en ejecucion
+
+```bash
+# Estado del AgentOS
+python -m management.admin status
+
+# Listar sesiones de un usuario
+python -m management.admin sessions --user "+593991234567"
+
+# Ver memorias
+python -m management.admin memories --user "+593991234567"
+
+# Ejecutar agente directamente
+python -m management.admin run --agent agnobot-main --message "Hola"
+
+# Ejecutar con streaming
+python -m management.admin run --agent agnobot-main --message "Busca noticias de IA" --stream
+
+# Buscar en Knowledge Base
+python -m management.admin knowledge-search --query "documento"
+
+# Crear memoria manualmente
+python -m management.admin create-memory --user admin --memory "Prefiere respuestas en espanol"
+```
+
+Tambien se puede usar como modulo Python:
+
+```python
+from management.admin import AdminClient
+
+admin = AdminClient("http://localhost:8000")
+info = await admin.status()
+memories = await admin.list_memories(user_id="+593991234567")
+response = await admin.run_agent(agent_id="agnobot-main", message="Hola")
+```
+
+---
+
 ## Features
 
 | Feature | Descripcion |
 |---------|-------------|
 | Multimodal | Procesa imagenes, video, audio y texto |
-| Workspace declarativo | Configura con YAML y Markdown |
+| Workspace declarativo | Configura con YAML y Markdown, sin codigo |
 | PgVector + Hybrid Search | Busqueda semantica y por keywords |
-| Memoria Agentic | Recuerda informacion entre sesiones |
+| MemoryManager | Memoria agentic persistente entre sesiones |
 | MCP a docs.agno.com | El agente consulta su propia documentacion |
 | WhatsApp | Canal via Meta Business API |
 | Knowledge Base | Upload, busqueda y eliminacion de documentos |
 | Multi-modelo | Gemini, Claude, GPT configurables |
 | Studio | Editor visual via os.agno.com |
+| CLI Onboarding | Wizard que genera workspace completo |
+| Admin programatico | Gestiona sesiones, memorias, knowledge via CLI |
+| Validacion automatica | Verifica workspace al arrancar el gateway |
 
 ---
 
@@ -150,25 +232,31 @@ Modifica cualquier archivo y reinicia para aplicar los cambios.
 
 ```
 OpenAgno/
-  gateway.py               # Punto de entrada AgentOS
-  loader.py                # Motor de carga del workspace
+  gateway.py                 # Punto de entrada AgentOS (con validacion)
+  loader.py                  # Motor de carga del workspace
   workspace/
-    config.yaml            # Configuracion central
-    instructions.md        # Personalidad del agente
-    tools.yaml             # Herramientas
-    mcp.yaml               # Servidores MCP
+    config.yaml              # Configuracion central
+    instructions.md          # Personalidad del agente
+    tools.yaml               # Herramientas
+    mcp.yaml                 # Servidores MCP
     knowledge/
-      urls.yaml            # URLs para ingestion
+      urls.yaml              # URLs para ingestion
     agents/
-      teams.yaml           # Equipos multi-agente
-    schedules.yaml         # Tareas programadas
+      teams.yaml             # Equipos multi-agente
+    schedules.yaml           # Tareas programadas
   routes/
-    knowledge_routes.py    # Endpoints REST para RAG
+    knowledge_routes.py      # Endpoints REST para RAG
+  management/
+    __init__.py              # Modulo de gestion
+    cli.py                   # Wizard de onboarding
+    validator.py             # Validacion de workspace
+    admin.py                 # Admin via AgentOSClient
   docs_plan/
     plan_agno_agent_platform.md
-  .env.example             # Template de variables
-  requirements.txt         # Dependencias
-  docker-compose.yml       # PostgreSQL pgvector local
+    phase1_validation_phase2_plan.md
+  .env.example               # Template de variables
+  requirements.txt           # Dependencias
+  docker-compose.yml         # PostgreSQL pgvector local
 ```
 
 ---
@@ -194,8 +282,10 @@ OpenAgno/
 | PgVector | [Vector Stores](https://docs.agno.com/knowledge/vector-stores/pgvector/overview) |
 | Hybrid Search | [Busqueda Hibrida](https://docs.agno.com/knowledge/concepts/search-and-retrieval/hybrid-search) |
 | MCPTools | [MCP Overview](https://docs.agno.com/tools/mcp/overview) |
+| MCPTools en AgentOS | [MCP Tools](https://docs.agno.com/agent-os/mcp/tools) |
 | WhatsApp | [WhatsApp Interface](https://docs.agno.com/agent-os/interfaces/whatsapp/introduction) |
 | AgentOS | [Demo](https://docs.agno.com/examples/agent-os/demo) |
+| Memory | [Agent Memory](https://docs.agno.com/agents/usage/agent-with-memory) |
 
 ---
 
