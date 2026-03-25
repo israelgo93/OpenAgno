@@ -17,6 +17,7 @@ import os
 import yaml
 from pathlib import Path
 
+from dotenv import load_dotenv
 from management.validator import validate_workspace, print_validation
 
 
@@ -439,6 +440,9 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	])
 
 	Path(".env").write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+
+	# Recargar .env para que la validacion inline vea las credenciales recien escritas
+	load_dotenv(override=True)
 
 	# -- Validar workspace generado --
 	print("\nValidando workspace generado...")
