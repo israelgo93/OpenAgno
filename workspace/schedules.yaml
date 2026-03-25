@@ -1,0 +1,11 @@
+# ===================================
+# Scheduler - Tareas Programadas
+# ===================================
+
+schedules: []
+  # - name: "Resumen matutino"
+  #   agent_id: "agnobot-main"
+  #   cron: "0 9 * * *"
+  #   timezone: "America/Guayaquil"
+  #   message: "Genera un resumen de las noticias mas importantes del dia"
+  #   user_id: "admin"

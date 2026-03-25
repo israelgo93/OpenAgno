@@ -1,0 +1,16 @@
+# ===================================
+# Teams - Equipos Multi-Agente
+# ===================================
+
+teams: []
+  # - name: "Research Team"
+  #   id: "research-team"
+  #   mode: "coordinate"
+  #   members:
+  #     - research-agent
+  #     - agnobot-main
+  #   model:
+  #     provider: "google"
+  #     id: "gemini-2.0-flash"
+  #   instructions:
+  #     - "Coordina entre los agentes para dar la mejor respuesta."

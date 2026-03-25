@@ -1,0 +1,26 @@
+# ===================================
+# MCP - Servidores Model Context Protocol
+# ===================================
+
+# MCP Servers que el agente puede usar como herramientas
+servers:
+  - name: agno_docs
+    enabled: true
+    transport: "streamable-http"
+    url: "https://docs.agno.com/mcp"
+
+  # - name: github
+  #   enabled: false
+  #   transport: "stdio"
+  #   command: "npx -y @modelcontextprotocol/server-github"
+  #   env:
+  #     GITHUB_TOKEN: "${GITHUB_TOKEN}"
+
+  # - name: supabase
+  #   enabled: false
+  #   transport: "stdio"
+  #   command: "npx -y @supabase/mcp-server-supabase@latest --access-token=${SUPABASE_ACCESS_TOKEN}"
+
+# Configuracion del servidor MCP propio (expuesto por AgentOS)
+expose:
+  enabled: true

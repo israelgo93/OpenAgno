@@ -1,0 +1,50 @@
+# ===================================
+# AgnoBot - Configuracion Central
+# ===================================
+
+# Identidad del agente
+agent:
+  name: "AgnoBot"
+  id: "agnobot-main"
+  description: "Asistente personal multimodal autonomo"
+
+# Modelo de IA
+model:
+  provider: "google"        # google | openai | anthropic
+  id: "gemini-2.0-flash"    # ID especifico del modelo
+
+# Base de datos
+database:
+  type: "supabase"          # supabase | local | sqlite
+  knowledge_table: "agnobot_knowledge_contents"
+  vector_table: "agnobot_knowledge_vectors"
+
+# Vector DB
+vector:
+  search_type: "hybrid"     # hybrid | vector | keyword
+  embedder: "text-embedding-3-small"
+  max_results: 5
+
+# Canales habilitados
+channels:
+  - whatsapp
+  # - slack
+
+# Memoria
+memory:
+  enable_agentic_memory: true
+  enable_user_memories: true
+  enable_session_summaries: true
+  num_history_runs: 5
+
+# AgentOS
+agentos:
+  id: "agnobot-gateway"
+  name: "AgnoBot Platform"
+  port: 8000
+  tracing: true
+  enable_mcp_server: true
+
+# Studio
+studio:
+  enabled: true

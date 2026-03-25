@@ -1,0 +1,10 @@
+# ===================================
+# Knowledge - URLs para Ingestion
+# ===================================
+
+urls: []
+  # - url: "https://example.com/docs/guide.pdf"
+  #   name: "Guia de Usuario"
+  #   metadata:
+  #     category: "documentacion"
+  #     source: "manual"

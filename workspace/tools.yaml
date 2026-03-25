@@ -1,0 +1,41 @@
+# ===================================
+# Tools - Herramientas del Agente
+# ===================================
+
+# Tools nativos de Agno (siempre disponibles)
+builtin:
+  - name: duckduckgo
+    enabled: true
+    config: {}
+
+  - name: crawl4ai
+    enabled: true
+    config:
+      max_length: 2000
+
+  - name: reasoning
+    enabled: true
+    config:
+      add_instructions: true
+
+# Tools que requieren configuracion (API keys en .env)
+optional:
+  - name: email
+    enabled: false
+    config:
+      sender_email: "${GMAIL_SENDER}"
+      sender_name: "AgnoBot"
+      sender_passkey: "${GMAIL_PASSKEY}"
+      receiver_email: "${GMAIL_RECEIVER}"
+
+  - name: tavily
+    enabled: false
+
+  - name: spotify
+    enabled: false
+
+  - name: shell
+    enabled: false
+
+# Toolkits personalizados (archivos Python en tools/)
+custom: []

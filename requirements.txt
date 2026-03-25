@@ -1,0 +1,32 @@
+# ===================================
+# AgnoBot v3 - Dependencias
+# ===================================
+
+# Agno Framework (con AgentOS)
+agno[os]
+
+# Modelos de IA
+openai
+google-genai
+anthropic
+
+# Tools
+duckduckgo-search
+crawl4ai
+
+# Base de datos
+psycopg[binary]
+sqlalchemy
+pgvector
+
+# MCP
+mcp
+
+# Configuracion
+pyyaml
+python-dotenv
+
+# Servidor
+fastapi
+uvicorn
+python-multipart
