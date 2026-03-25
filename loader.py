@@ -5,7 +5,9 @@ Lee archivos YAML/MD del workspace/ y construye:
 - Agente principal con tools, instrucciones y MCP
 - Sub-agentes desde workspace/agents/*.yaml
 - Teams multi-agente desde workspace/agents/teams.yaml
+- Schedules desde workspace/schedules.yaml
 - Knowledge base con PgVector/Supabase
+- Auto-ingesta de documentos y URLs
 - Configuracion de canales (WhatsApp, Slack, Web)
 """
 import os
@@ -175,51 +177,68 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 		name = tool_def["name"]
 		config = _resolve_config(tool_def.get("config", {}))
 
-		if name == "email":
-			from agno.tools.email import EmailTools
-			if config.get("sender_email") and config.get("sender_passkey"):
-				tools.append(EmailTools(**config))
-		elif name == "tavily":
-			from agno.tools.tavily import TavilyTools
-			tools.append(TavilyTools())
-		elif name == "spotify":
-			from agno.tools.spotify import SpotifyTools
-			tools.append(SpotifyTools())
-		elif name == "shell":
-			from agno.tools.shell import ShellTools
-			logger.warning("ShellTools activado - riesgo de seguridad")
-			tools.append(ShellTools())
+		match name:
+			case "email":
+				from agno.tools.email import EmailTools
+				if config.get("sender_email") and config.get("sender_passkey"):
+					tools.append(EmailTools(**config))
+			case "tavily":
+				from agno.tools.tavily import TavilyTools
+				tools.append(TavilyTools())
+			case "spotify":
+				from agno.tools.spotify import SpotifyTools
+				tools.append(SpotifyTools())
+			case "shell":
+				from agno.tools.shell import ShellTools
+				logger.warning("ShellTools activado - riesgo de seguridad")
+				tools.append(ShellTools())
+			case _:
+				logger.warning(f"Tool opcional desconocido: {name}")
 
 	return tools
 
 
-def build_mcp_tools(mcp_config: dict[str, Any]) -> list[Union[MCPTools, dict[str, Any]]]:
-	"""Construye MCPTools segun mcp.yaml."""
-	mcp_tools: list[Union[MCPTools, dict[str, Any]]] = []
+def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
+	"""Construye MCPTools segun mcp.yaml. Soporta streamable-http, sse y stdio."""
+	mcp_tools: list[MCPTools] = []
 
 	for server in mcp_config.get("servers", []):
 		if not server.get("enabled", False):
 			continue
 
 		transport = server.get("transport", "streamable-http")
+		name = server.get("name", "mcp-server")
 
 		if transport in ("streamable-http", "sse"):
 			url = _resolve_env(server.get("url", ""))
 			if url:
-				mcp_tools.append(MCPTools(
-					transport=transport,
-					url=url,
-				))
+				try:
+					mcp_tools.append(MCPTools(transport=transport, url=url))
+					logger.info(f"MCP '{name}' ({transport}): {url}")
+				except Exception as e:
+					logger.warning(f"MCP '{name}' fallo al inicializar: {e}")
+
 		elif transport == "stdio":
-			command = _resolve_env(server.get("command", ""))
-			env = _resolve_config(server.get("env", {}))
-			if command:
-				mcp_tools.append({
-					"type": "stdio",
-					"command": command,
-					"env": {**os.environ, **env},
-					"name": server.get("name", "mcp-server"),
-				})
+			command_str = _resolve_env(server.get("command", ""))
+			if not command_str:
+				continue
+
+			parts = command_str.split()
+			command = parts[0] if parts else ""
+			args = parts[1:] if len(parts) > 1 else []
+			env = {**os.environ, **_resolve_config(server.get("env", {}))}
+
+			try:
+				mcp_tool = MCPTools(
+					transport="stdio",
+					command=command,
+					args=args,
+					env=env,
+				)
+				mcp_tools.append(mcp_tool)
+				logger.info(f"MCP '{name}' (stdio): {command}")
+			except Exception as e:
+				logger.warning(f"MCP '{name}' fallo al inicializar: {e}")
 
 	return mcp_tools
 
@@ -399,6 +418,57 @@ def build_teams(
 	return teams
 
 
+def build_schedules() -> list[dict[str, str]]:
+	"""Carga schedules desde workspace/schedules.yaml."""
+	schedules_config = load_yaml("schedules.yaml")
+	schedules: list[dict[str, str]] = []
+
+	for sched in schedules_config.get("schedules", []):
+		if not sched.get("enabled", True):
+			continue
+
+		name = sched.get("name", "Sin nombre")
+		cron = sched.get("cron", "")
+		message = sched.get("message", "")
+
+		if not cron or not message:
+			logger.warning(f"Schedule '{name}' incompleto (falta cron o message). Omitido.")
+			continue
+
+		schedules.append({
+			"name": name,
+			"agent_id": sched.get("agent_id", "agnobot-main"),
+			"cron": cron,
+			"timezone": sched.get("timezone", "America/Guayaquil"),
+			"message": message,
+			"user_id": sched.get("user_id", "scheduler"),
+		})
+		logger.info(f"Schedule registrado: '{name}' ({cron})")
+
+	return schedules
+
+
+def load_knowledge_urls() -> list[dict[str, str]]:
+	"""Carga URLs para ingesta desde workspace/knowledge/urls.yaml."""
+	urls_config = load_yaml("knowledge/urls.yaml")
+	return urls_config.get("urls", [])
+
+
+def get_knowledge_docs_paths() -> list[Path]:
+	"""Retorna lista de archivos soportados en workspace/knowledge/docs/."""
+	docs_dir = WORKSPACE_DIR / "knowledge" / "docs"
+	if not docs_dir.exists():
+		return []
+
+	supported_extensions = {".pdf", ".md", ".txt", ".docx", ".csv", ".json"}
+	paths: list[Path] = []
+	for f in sorted(docs_dir.iterdir()):
+		if f.is_file() and f.suffix.lower() in supported_extensions:
+			paths.append(f)
+
+	return paths
+
+
 def load_workspace() -> dict[str, Any]:
 	"""
 	Carga completa del workspace - retorna un dict con todos los objetos
@@ -417,10 +487,7 @@ def load_workspace() -> dict[str, Any]:
 
 	tools = build_tools(tools_config)
 	mcp_tools = build_mcp_tools(mcp_config)
-
-	for mcp_tool in mcp_tools:
-		if isinstance(mcp_tool, MCPTools):
-			tools.append(mcp_tool)
+	tools.extend(mcp_tools)
 
 	instructions = load_instructions()
 	model = build_model(config.get("model", {}))
@@ -452,6 +519,9 @@ def load_workspace() -> dict[str, Any]:
 	sub_agents = build_sub_agents(db, knowledge)
 	all_agents = [main_agent] + sub_agents
 	teams = build_teams(all_agents, db)
+	schedules = build_schedules()
+	knowledge_doc_paths = get_knowledge_docs_paths()
+	knowledge_urls = load_knowledge_urls()
 
 	return {
 		"config": config,
@@ -463,4 +533,7 @@ def load_workspace() -> dict[str, Any]:
 		"teams": teams,
 		"mcp_config": mcp_config,
 		"tools_config": tools_config,
+		"schedules": schedules,
+		"knowledge_doc_paths": knowledge_doc_paths,
+		"knowledge_urls": knowledge_urls,
 	}

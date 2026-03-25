@@ -1,10 +1,11 @@
 # ===================================
-# Knowledge - URLs para Ingestion
+# Knowledge - URLs para Ingestion (F5)
 # ===================================
+# Las URLs se ingestarán automaticamente al arrancar si
+# knowledge.auto_ingest_urls esta habilitado en config.yaml
 
 urls: []
   # - url: "https://example.com/docs/guide.pdf"
   #   name: "Guia de Usuario"
-  #   metadata:
-  #     category: "documentacion"
-  #     source: "manual"
+  # - url: "https://example.com/faq"
+  #   name: "FAQ del Producto"

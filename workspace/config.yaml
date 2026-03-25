@@ -46,3 +46,19 @@ agentos:
 # Studio
 studio:
   enabled: true
+
+# A2A Protocol
+a2a:
+  enabled: false
+
+# Scheduler (F5) — ver https://docs.agno.com/agent-os/scheduler/overview
+scheduler:
+  enabled: true
+  poll_interval: 15
+  timezone: "America/Guayaquil"
+
+# Knowledge auto-ingesta (F5)
+knowledge:
+  auto_ingest_docs: true
+  auto_ingest_urls: true
+  skip_if_exists: true

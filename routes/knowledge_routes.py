@@ -1,5 +1,7 @@
 """
 Knowledge Routes - Endpoints REST para gestion de la Knowledge Base.
+
+Incluye upload de documentos, ingesta de URLs, listado, busqueda y eliminacion.
 """
 import tempfile
 from pathlib import Path
@@ -18,6 +20,15 @@ class SearchRequest(BaseModel):
 	max_results: int = 5
 
 
+class UrlEntry(BaseModel):
+	url: str
+	name: Optional[str] = None
+
+
+class IngestUrlsRequest(BaseModel):
+	urls: list[UrlEntry]
+
+
 def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 	"""Crea el router de Knowledge con endpoints REST funcionales."""
 	router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -25,7 +36,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 	@router.post("/upload")
 	async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:
 		"""Recibe un archivo y lo inserta en la Knowledge Base."""
-		allowed_extensions = {".pdf", ".txt", ".md", ".csv", ".docx"}
+		allowed_extensions = {".pdf", ".txt", ".md", ".csv", ".docx", ".json"}
 		file_ext = Path(file.filename or "").suffix.lower()
 
 		if file_ext not in allowed_extensions:
@@ -57,6 +68,26 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 		finally:
 			Path(tmp_path).unlink(missing_ok=True)
 
+	@router.post("/ingest-urls")
+	async def ingest_urls(request: IngestUrlsRequest) -> dict[str, object]:
+		"""Ingesta una lista de URLs en la Knowledge Base."""
+		results: list[dict[str, str]] = []
+		for entry in request.urls:
+			if not entry.url:
+				results.append({"url": "", "status": "error", "detail": "URL vacia"})
+				continue
+			name = entry.name or entry.url
+			try:
+				knowledge.insert(url=entry.url, name=name, skip_if_exists=True)
+				results.append({"url": entry.url, "status": "ok", "name": name})
+				logger.info(f"URL ingestada: {name}")
+			except Exception as e:
+				results.append({"url": entry.url, "status": "error", "detail": str(e)})
+				logger.warning(f"Error ingestando URL {name}: {e}")
+
+		ok_count = sum(1 for r in results if r["status"] == "ok")
+		return {"results": results, "total": len(results), "ok": ok_count}
+
 	@router.get("/list")
 	async def list_documents() -> dict[str, object]:
 		"""Lista documentos unicos en la Knowledge Base."""
@@ -83,8 +114,8 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 
 			return {"documents": [], "count": 0, "message": "Sin contents_db"}
 		except Exception as e:
-			logger.error(f"Error al listar documentos: {e}")
-			raise HTTPException(status_code=500, detail=str(e))
+			logger.warning(f"Error al listar documentos: {e}")
+			return {"documents": [], "count": 0, "message": "Knowledge table no inicializada"}
 
 	@router.delete("/{doc_name}")
 	async def delete_document(doc_name: str) -> dict[str, str]:
@@ -141,12 +172,13 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			documents = []
 			for doc in results:
 				documents.append({
-					"content": doc.content if hasattr(doc, "content") else str(doc),
+					"content": doc.content[:500] if hasattr(doc, "content") and doc.content else str(doc)[:500],
 					"name": doc.name if hasattr(doc, "name") else "unknown",
+					"score": getattr(doc, "score", None),
 				})
-			return {"results": documents, "count": len(documents)}
+			return {"query": request.query, "results": documents, "count": len(documents)}
 		except Exception as e:
-			logger.error(f"Error en busqueda: {e}")
-			raise HTTPException(status_code=500, detail=str(e))
+			logger.warning(f"Error en busqueda: {e}")
+			return {"query": request.query, "results": [], "count": 0}
 
 	return router

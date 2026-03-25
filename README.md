@@ -7,7 +7,7 @@
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://docs.agno.com"><img src="https://img.shields.io/badge/Agno-Framework-6366F1?style=flat-square" alt="Agno"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-3_Validada-green?style=flat-square" alt="Status"></a>
+    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-5_Scheduler_Knowledge-green?style=flat-square" alt="Status"></a>
   </p>
 </p>
 
@@ -27,7 +27,10 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
 - **RAG hibrido** — Busqueda semantica + keyword con PgVector
 - **Multi-canal** — WhatsApp, Slack y Web desde un unico gateway
 - **Autonomia via MCP** — El agente consulta la documentacion de Agno por si mismo
-- **CLI de Onboarding** — Genera workspace completo con un wizard interactivo
+- **Scheduler AgentOS** — Cron integrado (`scheduler=True`) y API `POST /schedules` (ver docs Agno)
+- **Auto-ingesta Knowledge** — Al arrancar: `knowledge/docs/*` y URLs de `knowledge/urls.yaml` (configurable)
+- **Tavily** — Tool opcional y servidor MCP streamable-http para busqueda web avanzada
+- **CLI de Onboarding** — Genera workspace completo con un wizard interactivo (incluye F5)
 - **Admin programatico** — Gestiona sesiones, memorias y knowledge via CLI o codigo
 
 ---
@@ -55,6 +58,12 @@ Construido sobre [Agno Framework](https://docs.agno.com), OpenAgno ofrece:
      |     Crawl4AI, Reasoning)   |
      |   - MCP (docs.agno.com)    |
      |   - MemoryManager          |
+     |   - Scheduler (cron API)   |
+     +---------+------------------+
+               |
+     +---------v------------------+
+     |   Auto-ingesta (lifespan)  |
+     |   docs/ + urls.yaml        |
      +---------+------------------+
                |
      +---------v------------------+
@@ -116,7 +125,7 @@ cp .env.example .env
 python -m management.validator
 ```
 
-Verifica que el workspace tenga la estructura correcta, las variables de entorno necesarias, y valida sub-agentes y teams.
+Verifica estructura, variables de entorno, sub-agentes, teams, schedules habilitados, URLs de knowledge y servidores MCP (incluye Tavily y tokens).
 
 ### 4. Ejecutar
 
@@ -147,7 +156,7 @@ El corazon de OpenAgno es el **workspace**: una carpeta con archivos declarativo
 | `workspace/knowledge/` | Documentos y URLs para RAG |
 | `workspace/agents/research_agent.yaml` | Sub-agente de investigacion |
 | `workspace/agents/teams.yaml` | Equipos multi-agente |
-| `workspace/schedules.yaml` | Tareas programadas |
+| `workspace/schedules.yaml` | Plantilla / referencia de tareas cron (registro real via API AgentOS) |
 
 Modifica cualquier archivo y reinicia para aplicar los cambios.
 
@@ -208,7 +217,7 @@ OpenAgno incluye un modulo de gestion completo:
 python -m management.cli
 ```
 
-Wizard interactivo de 6 pasos: identidad, modelo, base de datos, canales, tools y embeddings. Genera sub-agentes y teams de ejemplo.
+Wizard interactivo: identidad, modelo, base de datos, canales, tools, scheduler/auto-ingesta (F5) y embeddings. Genera sub-agentes, teams y plantilla de schedules.
 
 ### Validacion — Verifica configuracion
 
@@ -216,7 +225,7 @@ Wizard interactivo de 6 pasos: identidad, modelo, base de datos, canales, tools 
 python -m management.validator
 ```
 
-Valida archivos requeridos, secciones en YAML, API keys, variables de DB, canales, sub-agentes y teams.
+Valida archivos requeridos, YAML, API keys, DB, canales, sub-agentes, teams, schedules, URLs de knowledge y MCP habilitados.
 
 ### Admin — Gestiona el agente en ejecucion
 
@@ -304,14 +313,18 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 | **F2: CLI + Admin** | Onboarding wizard + Validador + Admin programatico | Completada |
 | **F3: Multi-Canal + Teams** | Sub-agentes YAML + Teams + Slack + Knowledge endpoints | Validada |
 | **F4: Remote Agents** | Agentes distribuidos + MCP avanzado (Supabase, GitHub) + A2A | Planificada |
+| **F5: Scheduler + Knowledge** | Cron AgentOS, auto-ingesta docs/URLs, Tavily MCP/tool, validador extendido | En curso |
 
-### Proxima Fase: F4 — Remote Execution + MCP Avanzado
+### Fase 5 (actual)
 
-- Agentes distribuidos en multiples instancias de AgentOS
-- `RemoteAgent` para agentes en servidores separados
-- MCP servers configurables (Supabase, GitHub, Filesystem)
-- Protocolo A2A para interoperabilidad inter-framework
-- Docker multi-servicio (Gateway + Research Server + DB)
+- Scheduler de AgentOS (`scheduler.enabled` + `poll_interval` en `config.yaml`; `pip install agno[os,scheduler]`)
+- Auto-ingesta al arrancar segun `knowledge.auto_*` en `config.yaml`
+- `POST /knowledge/ingest-urls` y plantilla `workspace/schedules.yaml` como referencia para cron
+- MCP opcional Tavily, Supabase, GitHub y filesystem en `workspace/mcp.yaml`
+
+### Proxima gran entrega: F4 — Remote Execution
+
+- Agentes distribuidos, `RemoteAgent`, Docker multi-servicio y A2A (ver plan general)
 
 ---
 
@@ -328,7 +341,10 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 | MCP a docs.agno.com | El agente consulta su propia documentacion |
 | WhatsApp | Canal via Meta Business API |
 | Slack | Canal via Slack Bot con soporte de threads |
-| Knowledge Base | Upload, listado, busqueda y eliminacion de documentos |
+| Knowledge Base | Upload, listado, busqueda, eliminacion e ingesta por URLs |
+| Scheduler | Cron de AgentOS + API REST `/schedules` |
+| Auto-ingesta | Documentos en `knowledge/docs/` y `urls.yaml` al iniciar |
+| Tavily | Tool y/o MCP para busqueda web |
 | Multi-modelo | Gemini, Claude, GPT configurables |
 | Studio | Editor visual via os.agno.com |
 | CLI Onboarding | Wizard que genera workspace completo |
@@ -357,7 +373,7 @@ Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://loc
 
 ```
 OpenAgno/
-  gateway.py                 # Gateway con sub-agentes, teams, Slack
+  gateway.py                 # Gateway F5: lifespan, scheduler, knowledge routes
   loader.py                  # Motor de carga + build_sub_agents() + build_teams()
   workspace/
     config.yaml              # Configuracion central
@@ -384,6 +400,7 @@ OpenAgno/
     phase1_validation_phase2_plan.md      # Validacion F1 + Plan F2
     phase2_validation_phase3_plan.md      # Validacion F2 + Plan F3
     phase3_validation_phase4_plan.md      # Validacion F3 + Plan F4
+    phase4_validation_phase5_plan.md       # Validacion F4 + Plan F5
   .env.example               # Template de variables
   requirements.txt           # Dependencias
   docker-compose.yml         # PostgreSQL pgvector local
@@ -396,9 +413,11 @@ OpenAgno/
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
 | `POST` | `/knowledge/upload` | Subir documento a la Knowledge Base |
+| `POST` | `/knowledge/ingest-urls` | Ingestar una lista de URLs en la Knowledge Base |
 | `GET` | `/knowledge/list` | Listar documentos con IDs |
 | `DELETE` | `/knowledge/{doc_name}` | Eliminar documento por nombre |
 | `POST` | `/knowledge/search` | Busqueda semantica con conteo |
+| `POST` | `/schedules` | Crear tarea cron (requiere scheduler habilitado; ver docs Agno) |
 | `GET` | `/whatsapp/status` | Estado del webhook WhatsApp |
 | `POST` | `/whatsapp/webhook` | Webhook para mensajes WhatsApp |
 | `POST` | `/slack/events` | Webhook para eventos Slack |
@@ -418,6 +437,7 @@ OpenAgno/
 | WhatsApp | [WhatsApp Interface](https://docs.agno.com/agent-os/interfaces/whatsapp/introduction) |
 | Slack | [Slack Interface](https://docs.agno.com/agent-os/interfaces/slack/introduction) |
 | AgentOS | [Demo](https://docs.agno.com/examples/agent-os/demo) |
+| Scheduler | [AgentOS Scheduler](https://docs.agno.com/agent-os/scheduler/overview) |
 | Memory | [Agent Memory](https://docs.agno.com/agents/usage/agent-with-memory) |
 | Registry | [Studio Registry](https://docs.agno.com/agent-os/studio/registry) |
 | Remote Agents | [Remote Agent](https://docs.agno.com/agents/remote-agent) |

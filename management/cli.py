@@ -168,6 +168,11 @@ def run_onboarding() -> None:
 	if tavily_enabled:
 		tavily_key = _prompt("TAVILY_API_KEY")
 
+	# -- PASO 5b: Scheduler y knowledge (F5) --
+	scheduler_enabled = _prompt_yn("Activar scheduler de AgentOS (cron via API / Studio)?", default=True)
+	auto_ingest_docs = _prompt_yn("Auto-ingestar documentos de knowledge/docs al arrancar?", default=True)
+	auto_ingest_urls = _prompt_yn("Auto-ingestar URLs de knowledge/urls.yaml al arrancar?", default=True)
+
 	# -- PASO 6: Embeddings --
 	openai_key = ""
 	if db_type != "sqlite":
@@ -217,6 +222,17 @@ def run_onboarding() -> None:
 			"enable_mcp_server": True,
 		},
 		"studio": {"enabled": db_type != "sqlite"},
+		"a2a": {"enabled": False},
+		"scheduler": {
+			"enabled": scheduler_enabled,
+			"poll_interval": 15,
+			"timezone": "America/Guayaquil",
+		},
+		"knowledge": {
+			"auto_ingest_docs": auto_ingest_docs,
+			"auto_ingest_urls": auto_ingest_urls,
+			"skip_if_exists": True,
+		},
 	}
 	_write_yaml(workspace_dir / "config.yaml", config)
 
@@ -271,17 +287,23 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	_write_yaml(workspace_dir / "tools.yaml", tools)
 
 	# --- mcp.yaml ---
-	mcp = {
-		"servers": [
-			{
-				"name": "agno_docs",
-				"enabled": True,
-				"transport": "streamable-http",
-				"url": "https://docs.agno.com/mcp",
-			},
-		],
-		"expose": {"enabled": True},
-	}
+	mcp_servers: list[dict] = [
+		{
+			"name": "agno_docs",
+			"enabled": True,
+			"transport": "streamable-http",
+			"url": "https://docs.agno.com/mcp",
+		},
+	]
+	if tavily_enabled:
+		mcp_servers.append({
+			"name": "tavily",
+			"enabled": True,
+			"transport": "streamable-http",
+			"url": "https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_API_KEY}",
+			"description": "Busqueda web avanzada con Tavily",
+		})
+	mcp = {"servers": mcp_servers, "expose": {"enabled": True}}
 	_write_yaml(workspace_dir / "mcp.yaml", mcp)
 
 	# --- agents/research_agent.yaml ---
@@ -330,8 +352,21 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	}
 	_write_yaml(workspace_dir / "agents" / "teams.yaml", teams)
 
-	# --- schedules.yaml ---
-	_write_yaml(workspace_dir / "schedules.yaml", {"schedules": []})
+	# --- schedules.yaml (plantilla F5, deshabilitada por defecto) ---
+	schedules_template = {
+		"schedules": [
+			{
+				"name": "Resumen matutino",
+				"enabled": False,
+				"agent_id": "agnobot-main",
+				"cron": "0 9 * * 1-5",
+				"timezone": "America/Guayaquil",
+				"message": "Genera un resumen breve de noticias de tecnologia.",
+				"user_id": "scheduler-admin",
+			},
+		],
+	}
+	_write_yaml(workspace_dir / "schedules.yaml", schedules_template)
 
 	# --- knowledge/urls.yaml ---
 	_write_yaml(workspace_dir / "knowledge" / "urls.yaml", {"urls": []})
@@ -399,6 +434,7 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	print(f"  workspace/mcp.yaml       - Servidores MCP")
 	print(f"  workspace/knowledge/     - Documentos RAG")
 	print(f"  workspace/agents/        - Sub-agentes y Teams")
+	print(f"  workspace/schedules.yaml - Plantilla cron (referencia; registrar en AgentOS)")
 	print(f"  .env                     - Secretos")
 
 	if errors:
@@ -412,6 +448,7 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	step = "2" if db_type == "local" else "1"
 	print(f"  Paso {step}: python gateway.py")
 	print(f"  Web UI: os.agno.com -> Add OS -> Local -> http://localhost:8000")
+	print(f"  Scheduler: POST /schedules (cron) si scheduler.enabled en config.yaml")
 
 	if "whatsapp" in channels:
 		url = whatsapp_vars.get("WHATSAPP_WEBHOOK_URL", "tu-url")

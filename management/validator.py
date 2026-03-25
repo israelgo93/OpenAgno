@@ -94,12 +94,12 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 
 	try:
 		with open(ws / "tools.yaml", "r", encoding="utf-8") as f:
-			tools = yaml.safe_load(f) or {}
+			tools_config = yaml.safe_load(f) or {}
 	except yaml.YAMLError as e:
 		errors.append(f"tools.yaml tiene YAML invalido: {e}")
 		return errors
 
-	for tool_def in tools.get("optional", []):
+	for tool_def in tools_config.get("optional", []):
 		if not tool_def.get("enabled", False):
 			continue
 		name = tool_def.get("name", "")
@@ -162,6 +162,81 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 					)
 		except yaml.YAMLError as e:
 			errors.append(f"teams.yaml: YAML invalido: {e}")
+
+	try:
+		schedules_config = yaml.safe_load(
+			(ws / "schedules.yaml").read_text(encoding="utf-8")
+		) or {}
+	except (yaml.YAMLError, FileNotFoundError):
+		schedules_config = {}
+
+	for sched in schedules_config.get("schedules", []):
+		if not sched.get("enabled", True):
+			continue
+		name = sched.get("name", "sin-nombre")
+		if not sched.get("cron"):
+			errors.append(f"schedules.yaml: schedule '{name}' habilitado sin 'cron'")
+		if not sched.get("message"):
+			errors.append(f"schedules.yaml: schedule '{name}' habilitado sin 'message'")
+		if not sched.get("agent_id"):
+			errors.append(f"schedules.yaml: schedule '{name}' habilitado sin 'agent_id'")
+		cron = sched.get("cron", "")
+		if cron and len(cron.split()) != 5:
+			errors.append(
+				f"schedules.yaml: schedule '{name}' tiene cron invalido "
+				f"(esperados 5 campos, recibidos {len(cron.split())})"
+			)
+
+	try:
+		urls_config = yaml.safe_load(
+			(ws / "knowledge" / "urls.yaml").read_text(encoding="utf-8")
+		) or {}
+	except (yaml.YAMLError, FileNotFoundError):
+		urls_config = {}
+
+	for url_entry in urls_config.get("urls", []):
+		url = url_entry.get("url", "")
+		if not url:
+			errors.append("knowledge/urls.yaml: entrada sin 'url'")
+		elif not url.startswith("http"):
+			errors.append(f"knowledge/urls.yaml: URL invalida: {url}")
+
+	try:
+		mcp_config = yaml.safe_load(
+			(ws / "mcp.yaml").read_text(encoding="utf-8")
+		) or {}
+	except (yaml.YAMLError, FileNotFoundError):
+		mcp_config = {}
+
+	tavily_mcp_enabled = False
+	for server in mcp_config.get("servers", []):
+		if not server.get("enabled", False):
+			continue
+		srv_name = server.get("name", "sin-nombre")
+		transport = server.get("transport", "")
+
+		if transport in ("streamable-http", "sse"):
+			if not server.get("url"):
+				errors.append(f"mcp.yaml: server '{srv_name}' habilitado sin 'url'")
+		elif transport == "stdio":
+			if not server.get("command"):
+				errors.append(f"mcp.yaml: server '{srv_name}' habilitado sin 'command'")
+			if srv_name == "supabase" and not os.getenv("SUPABASE_ACCESS_TOKEN"):
+				errors.append(".env: falta SUPABASE_ACCESS_TOKEN (MCP Supabase habilitado)")
+			if srv_name == "github" and not os.getenv("GITHUB_TOKEN"):
+				errors.append(".env: falta GITHUB_TOKEN (MCP GitHub habilitado)")
+
+		if srv_name == "tavily":
+			tavily_mcp_enabled = True
+
+	tavily_tool_enabled = False
+	for tool in tools_config.get("optional", []):
+		if tool.get("name") == "tavily" and tool.get("enabled", False):
+			tavily_tool_enabled = True
+
+	if (tavily_tool_enabled or tavily_mcp_enabled) and not os.getenv("TAVILY_API_KEY"):
+		if not tavily_tool_enabled:
+			errors.append(".env: falta TAVILY_API_KEY (Tavily MCP habilitado)")
 
 	return errors
 

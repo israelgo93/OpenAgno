@@ -1,9 +1,9 @@
 # ===================================
-# AgnoBot v3 - Dependencias
+# AgnoBot - Dependencias (F5)
 # ===================================
 
-# Agno Framework (con AgentOS)
-agno[os]
+# Agno Framework (AgentOS + scheduler cron)
+agno[os,scheduler]
 
 # Modelos de IA
 openai
@@ -13,6 +13,7 @@ anthropic
 # Tools
 duckduckgo-search
 crawl4ai
+tavily-python
 
 # Base de datos
 psycopg[binary]

@@ -30,12 +30,16 @@ optional:
 
   - name: tavily
     enabled: false
+    # Requiere TAVILY_API_KEY en .env
+    # Alternativa: usar Tavily como MCP en mcp.yaml (no requiere pip)
+    config: {}
 
   - name: spotify
     enabled: false
 
   - name: shell
     enabled: false
+    # Riesgo de seguridad: ejecuta comandos sin confirmacion
 
 # Toolkits personalizados (archivos Python en tools/)
 custom: []
