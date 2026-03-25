@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenAgno AI Agent Platform
+After=network.target
+
+[Service]
+Type=simple
+User=openagno
+WorkingDirectory=/opt/openagno
+Environment=OPENAGNO_ROOT=/opt/openagno
+EnvironmentFile=/opt/openagno/.env
+ExecStart=/opt/openagno/.venv/bin/python service_manager.py start
+ExecStop=/opt/openagno/.venv/bin/python service_manager.py stop
+ExecReload=/opt/openagno/.venv/bin/python service_manager.py restart
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

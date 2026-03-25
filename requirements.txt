@@ -1,5 +1,5 @@
 # ===================================
-# AgnoBot - Dependencias (F5)
+# AgnoBot - Dependencias (F6)
 # ===================================
 
 # Agno Framework (AgentOS + scheduler cron)
@@ -35,6 +35,10 @@ python-dotenv
 fastapi
 uvicorn
 python-multipart
+
+# AWS Bedrock (F6)
+boto3>=1.35
+aioboto3>=13.0
 
 # Utilidades
 rich

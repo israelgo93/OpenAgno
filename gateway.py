@@ -2,10 +2,12 @@
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.
 
-Fase 5: Scheduler, auto-ingesta Knowledge, Tavily MCP.
+Fase 6: Autonomia operativa, Bedrock, Background Hooks, Daemon, Scheduler nativo.
 """
 import inspect
 import os
+from datetime import datetime
+from pathlib import Path
 
 from contextlib import asynccontextmanager
 
@@ -87,7 +89,7 @@ async def lifespan(app: FastAPI):
 
 base_app = FastAPI(
 	title=config.get("agentos", {}).get("name", "AgnoBot Platform"),
-	version="0.5.0",
+	version="0.6.0",
 	lifespan=lifespan,
 )
 base_app.add_middleware(
@@ -182,6 +184,12 @@ if schedules:
 			"schedules.yaml tiene entradas pero AgentOS no expone scheduler; usa agno[os,scheduler]."
 		)
 
+# Background Hooks (F6) — hooks post-run no bloquean response
+_hooks_kwargs: dict[str, object] = {}
+if "run_hooks_in_background" in _agent_os_params:
+	_hooks_kwargs["run_hooks_in_background"] = True
+	logger.info("Background Hooks habilitados")
+
 agent_os = AgentOS(
 	id=os_config.get("id", "agnobot-gateway"),
 	name=os_config.get("name", "AgnoBot Platform"),
@@ -196,7 +204,32 @@ agent_os = AgentOS(
 	base_app=base_app,
 	on_route_conflict="preserve_base_app",
 	**_scheduler_kwargs,
+	**_hooks_kwargs,
 )
+
+# === Endpoints admin (F6) ===
+OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.resolve()))
+
+
+@base_app.post("/admin/reload")
+async def admin_reload():
+	"""El agente solicita reload. El daemon detecta la senal y reinicia."""
+	signal_file = OPENAGNO_ROOT / ".reload_requested"
+	signal_file.write_text(datetime.now().isoformat())
+	return {"status": "reload_requested"}
+
+
+@base_app.get("/admin/health")
+async def admin_health():
+	return {
+		"status": "healthy",
+		"version": "0.6.0",
+		"agents": [a.id for a in all_agents],
+		"teams": [t.id for t in teams] if teams else [],
+		"channels": config.get("channels", []),
+		"model": config.get("model", {}),
+		"scheduler": scheduler_cfg.get("enabled", False),
+	}
 
 app = agent_os.get_app()
 

@@ -43,5 +43,13 @@ optional:
     config:
       base_dir: "${OPENAGNO_ROOT}"
 
+  - name: workspace
+    enabled: true
+    description: "Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)"
+
+  - name: scheduler_mgmt
+    enabled: true
+    description: "Gestion de recordatorios y crons via API REST nativa"
+
 # Toolkits personalizados (archivos Python en tools/)
 custom: []

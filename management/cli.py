@@ -84,20 +84,33 @@ def run_onboarding() -> None:
 	# -- PASO 2: Modelo --
 	model_options = {
 		"1": "Gemini 2.0 Flash (Google - multimodal, recomendado)",
-		"2": "Claude Sonnet 4 (Anthropic)",
-		"3": "GPT-4.1 (OpenAI)",
-		"4": "GPT-5-mini (OpenAI)",
+		"2": "Claude Sonnet 4 (Anthropic - directo)",
+		"3": "Claude Sonnet 4 via Bedrock (AWS - sin API key Anthropic)",
+		"4": "Claude Opus 4 via Bedrock (AWS)",
+		"5": "GPT-4.1 (OpenAI)",
+		"6": "Amazon Nova Pro (AWS Bedrock)",
 	}
 	model_choice = _prompt_choice("PASO 2: Modelo de IA", model_options)
 
 	model_map: dict[str, tuple[str, str, str]] = {
 		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
-		"2": ("anthropic", "claude-sonnet-4-0", "ANTHROPIC_API_KEY"),
-		"3": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
-		"4": ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
+		"2": ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
+		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-20250514-v1:0", "AWS_ACCESS_KEY_ID"),
+		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-20250805-v1:0", "AWS_ACCESS_KEY_ID"),
+		"5": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
+		"6": ("aws_bedrock", "amazon.nova-pro-v1:0", "AWS_ACCESS_KEY_ID"),
 	}
 	provider, model_id, key_name = model_map.get(model_choice, model_map["1"])
-	api_key = _prompt(f"-> {key_name}")
+
+	# Si es AWS Bedrock, pedir credenciales AWS
+	aws_vars: dict[str, str] = {}
+	api_key = ""
+	if provider.startswith("aws_bedrock"):
+		aws_vars["AWS_ACCESS_KEY_ID"] = _prompt("AWS Access Key ID")
+		aws_vars["AWS_SECRET_ACCESS_KEY"] = _prompt("AWS Secret Access Key")
+		aws_vars["AWS_REGION"] = _prompt("AWS Region", "us-east-1")
+	else:
+		api_key = _prompt(f"-> {key_name}")
 
 	# -- PASO 3: Base de datos --
 	db_options = {
@@ -192,13 +205,17 @@ def run_onboarding() -> None:
 		(workspace_dir / d).mkdir(parents=True, exist_ok=True)
 
 	# --- config.yaml ---
+	model_config: dict = {"provider": provider, "id": model_id}
+	if provider.startswith("aws_bedrock"):
+		model_config["aws_region"] = aws_vars.get("AWS_REGION", "us-east-1")
+
 	config = {
 		"agent": {
 			"name": agent_name,
 			"id": "agnobot-main",
 			"description": agent_desc,
 		},
-		"model": {"provider": provider, "id": model_id},
+		"model": model_config,
 		"database": {
 			"type": db_type,
 			"knowledge_table": "agnobot_knowledge_contents",
@@ -281,6 +298,8 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 			{"name": "tavily", "enabled": tavily_enabled},
 			{"name": "spotify", "enabled": False},
 			{"name": "shell", "enabled": False},
+			{"name": "workspace", "enabled": True, "description": "Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)"},
+			{"name": "scheduler_mgmt", "enabled": True, "description": "Gestion de recordatorios y crons via API REST nativa"},
 		],
 		"custom": [],
 	}
@@ -378,12 +397,17 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 		"# ===================================",
 		"",
 		"# === API Keys ===",
-		f"{key_name}={api_key}",
 	]
+	if api_key:
+		env_lines.append(f"{key_name}={api_key}")
 	if openai_key and key_name != "OPENAI_API_KEY":
 		env_lines.append(f"OPENAI_API_KEY={openai_key}")
 	if tavily_key:
 		env_lines.append(f"TAVILY_API_KEY={tavily_key}")
+	if aws_vars:
+		env_lines.extend(["", "# === AWS Bedrock (F6) ==="])
+		for k, v in aws_vars.items():
+			env_lines.append(f"{k}={v}")
 
 	if db_vars:
 		env_lines.extend(["", "# === Base de datos ==="])

@@ -10,6 +10,8 @@ Lee archivos YAML/MD del workspace/ y construye:
 - Auto-ingesta de documentos y URLs
 - Configuracion de canales (WhatsApp, Slack, Web)
 - Integraciones declarativas en workspace/integrations/*/integration.yaml + config.env
+- Modelos AWS Bedrock (AwsBedrock + Claude via Bedrock) (F6)
+- WorkspaceTools y SchedulerTools para autonomia del agente (F6)
 """
 import copy
 import os
@@ -345,6 +347,14 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 				else:
 					base_path = _OPENAGNO_REPO_ROOT
 				tools.append(ShellTools(base_dir=base_path))
+			case "workspace":
+				from tools.workspace_tools import WorkspaceTools
+				tools.append(WorkspaceTools())
+				logger.info("WorkspaceTools activado — auto-configuracion habilitada")
+			case "scheduler_mgmt":
+				from tools.scheduler_tools import SchedulerTools
+				tools.append(SchedulerTools())
+				logger.info("SchedulerTools activado — gestion de crons via API REST")
 			case _:
 				logger.warning(f"Tool opcional desconocido: {name}")
 
@@ -397,9 +407,18 @@ def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
 
 
 def build_model(model_config: dict[str, Any]) -> Any:
-	"""Construye el modelo segun la configuracion."""
+	"""Construye el modelo segun la configuracion.
+
+	Proveedores verificados contra docs.agno.com:
+	- google:             from agno.models.google import Gemini
+	- openai:             from agno.models.openai import OpenAIChat
+	- anthropic:          from agno.models.anthropic import Claude
+	- aws_bedrock:        from agno.models.aws import AwsBedrock  (Mistral, Nova)
+	- aws_bedrock_claude: from agno.models.aws import Claude       (Anthropic via Bedrock)
+	"""
 	provider = model_config.get("provider", "google")
 	model_id = model_config.get("id", "gemini-2.0-flash")
+	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
 
 	match provider:
 		case "google":
@@ -411,6 +430,12 @@ def build_model(model_config: dict[str, Any]) -> Any:
 		case "anthropic":
 			from agno.models.anthropic import Claude
 			return Claude(id=model_id)
+		case "aws_bedrock":
+			from agno.models.aws import AwsBedrock
+			return AwsBedrock(id=model_id, aws_region=aws_region)
+		case "aws_bedrock_claude":
+			from agno.models.aws import Claude as BedrockClaude
+			return BedrockClaude(id=model_id, aws_region=aws_region)
 		case _:
 			raise ValueError(f"Proveedor de modelo no soportado: {provider}")
 

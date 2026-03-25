@@ -64,10 +64,18 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 		"openai": "OPENAI_API_KEY",
 		"anthropic": "ANTHROPIC_API_KEY",
 	}
+	aws_key_map: dict[str, list[str]] = {
+		"aws_bedrock": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+		"aws_bedrock_claude": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+	}
 	if provider in key_map:
 		env_key = key_map[provider]
 		if not os.getenv(env_key):
 			errors.append(f".env: falta {env_key} (requerido para provider '{provider}')")
+	elif provider in aws_key_map:
+		for aws_var in aws_key_map[provider]:
+			if not os.getenv(aws_var):
+				errors.append(f".env: falta {aws_var} (requerido para provider '{provider}')")
 
 	db_config = config.get("database", {})
 	db_type = db_config.get("type", "local")
@@ -153,6 +161,13 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 							f"agents/{yaml_file.name}: .env falta {sub_key} "
 							f"(requerido para provider '{sub_provider}')"
 						)
+				elif sub_provider in aws_key_map:
+					for aws_var in aws_key_map[sub_provider]:
+						if not os.getenv(aws_var):
+							errors.append(
+								f"agents/{yaml_file.name}: .env falta {aws_var} "
+								f"(requerido para provider '{sub_provider}')"
+							)
 			except yaml.YAMLError as e:
 				errors.append(f"agents/{yaml_file.name}: YAML invalido: {e}")
 
