@@ -33,8 +33,6 @@ channels:
 # Memoria
 memory:
   enable_agentic_memory: true
-  enable_user_memories: true
-  enable_session_summaries: true
   num_history_runs: 5
 
 # AgentOS

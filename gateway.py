@@ -11,7 +11,13 @@ from agno.os import AgentOS
 from agno.registry import Registry
 from agno.utils.log import logger
 
-from loader import load_workspace, load_yaml
+from loader import load_workspace
+from management.validator import validate_workspace, print_validation
+
+validation_errors = validate_workspace()
+if validation_errors:
+	print_validation(validation_errors)
+	logger.warning(f"Workspace tiene {len(validation_errors)} advertencia(s)")
 
 ws = load_workspace()
 config = ws["config"]

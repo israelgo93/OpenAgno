@@ -20,6 +20,7 @@ from agno.db.sqlite import SqliteDb
 from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.vectordb.pgvector import PgVector, SearchType
+from agno.memory import MemoryManager
 from agno.tools.mcp import MCPTools
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.crawl4ai import Crawl4aiTools
@@ -266,6 +267,10 @@ def load_workspace() -> dict[str, Any]:
 	mem_config = config.get("memory", {})
 	agent_config = config.get("agent", {})
 
+	memory_manager = None
+	if mem_config.get("enable_agentic_memory", True):
+		memory_manager = MemoryManager(model=model, db=db)
+
 	main_agent = Agent(
 		name=agent_config.get("name", "AgnoBot"),
 		id=agent_config.get("id", "agnobot-main"),
@@ -276,9 +281,8 @@ def load_workspace() -> dict[str, Any]:
 		search_knowledge=knowledge is not None,
 		tools=tools,
 		instructions=instructions,
+		memory_manager=memory_manager,
 		enable_agentic_memory=mem_config.get("enable_agentic_memory", True),
-		enable_user_memories=mem_config.get("enable_user_memories", True),
-		enable_session_summaries=mem_config.get("enable_session_summaries", True),
 		add_history_to_context=True,
 		num_history_runs=mem_config.get("num_history_runs", 5),
 		add_datetime_to_context=True,

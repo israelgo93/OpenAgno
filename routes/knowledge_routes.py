@@ -53,7 +53,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			tmp_path = tmp.name
 
 		try:
-			knowledge.insert(path=tmp_path)
+			knowledge.insert(path=tmp_path, name=file.filename, skip_if_exists=True)
 			logger.info(f"Documento cargado: {file.filename}")
 			return {"status": "ok", "message": f"Documento '{file.filename}' cargado exitosamente"}
 		except Exception as e:
