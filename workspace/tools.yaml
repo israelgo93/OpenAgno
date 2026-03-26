@@ -1,42 +1,51 @@
 builtin:
-- name: duckduckgo
-  enabled: true
-  config: {}
-- name: crawl4ai
-  enabled: true
-  config:
-    max_length: 2000
-- name: reasoning
-  enabled: true
-  config:
-    add_instructions: true
+  - name: duckduckgo
+    enabled: true
+  - name: crawl4ai
+    enabled: true
+    config:
+      max_length: 2000
+  - name: reasoning
+    enabled: true
+    config:
+      add_instructions: true
+
 optional:
-- name: email
-  enabled: false
-  config:
-    sender_email: ${GMAIL_SENDER}
-    sender_name: MAGNO
-    sender_passkey: ${GMAIL_PASSKEY}
-    receiver_email: ${GMAIL_RECEIVER}
-- name: tavily
-  enabled: true
-- name: spotify
-  enabled: false
-- name: shell
-  enabled: false
-- name: workspace
-  enabled: true
-  description: Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)
-- name: scheduler_mgmt
-  enabled: true
-  description: Gestion de recordatorios y crons via API REST nativa
-- name: audio
-  enabled: true
-  description: Transcripcion de audio (STT) y sintesis de voz (TTS)
-  config:
-    auto_transcribe: true
-    stt_model: gpt-4o-mini-transcribe
-    tts_enabled: false
-    tts_model: tts-1
-    tts_voice: nova
+  - name: workspace
+    enabled: true
+    description: Auto-configuracion del workspace
+  - name: scheduler_mgmt
+    enabled: true
+    description: Gestion de recordatorios y crons
+  - name: email
+    enabled: false
+  - name: tavily
+    enabled: false
+  - name: github
+    enabled: false
+  - name: audio
+    enabled: false
+  - name: shell
+    enabled: false
+  - name: spotify
+    enabled: false
+  - name: yfinance
+    enabled: false
+    description: Datos financieros en tiempo real
+  - name: wikipedia
+    enabled: false
+    description: Busqueda en Wikipedia
+  - name: arxiv
+    enabled: false
+    description: Papers academicos de arXiv
+  - name: calculator
+    enabled: false
+    description: Calculadora matematica
+  - name: file_tools
+    enabled: false
+    description: Lectura y escritura de archivos
+  - name: python_tools
+    enabled: false
+    description: Ejecucion de codigo Python
+
 custom: []
