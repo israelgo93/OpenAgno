@@ -1,6 +1,8 @@
 """
 Management - CLI de Onboarding y Admin programatico para OpenAgno.
 """
-from management.validator import validate_workspace
-
-__all__ = ["validate_workspace"]
+import warnings
+warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
+warnings.filterwarnings("ignore", message="chardet.*doesn't match a supported version")
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*found in sys.modules.*")

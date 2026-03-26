@@ -66,7 +66,7 @@ Funcionalidades nuevas de Agno que OpenAgno **no está aprovechando**:
 | Feature Agno | Import / Uso | Impacto para OpenAgno |
 |--------------|-------------|----------------------|
 | **GithubTools** | `from agno.tools.github import GithubTools` (req: `PyGithub` + `GITHUB_TOKEN`) | **El agente intentó usar `github` como tool pero no existe en el loader.** GithubTools es builtin de Agno y debería registrarse. |
-| **Telegram Interface** | `from agno.os.interfaces.telegram import Telegram` | Nuevo canal disponible. Cierra brecha vs OpenClaw (10+ canales). Bajo esfuerzo, alto impacto. |
+| **Telegram Interface** | `from agno.os.interfaces.telegram import Telegram` | Nuevo canal disponible. Bajo esfuerzo, alto impacto. |
 | **PgVector `similarity_threshold`** | Parámetro en PgVector search | Reduce ruido en búsquedas RAG. |
 | **MCPTools race condition fix** | Actualizar `agno[os]` | Fix para llamadas MCP paralelas que creaban sesiones duplicadas (posible causa de timeouts en `tavily_crawl`). |
 | **Slack `user_id` fix** | Actualizar `agno[os]` | Bug fix que impedía propagar `user_id` en Slack interface. |
@@ -514,7 +514,7 @@ PyGithub>=2.0
 
 ## 7.10 — Canal Telegram
 
-**Contexto**: Agno añadió interfaz Telegram en releases recientes. El análisis vs OpenClaw identifica la brecha de canales (3 vs 10+) como de impacto alto. Telegram es el canal de menor esfuerzo y mayor impacto para cerrarla.
+**Contexto**: Agno anadio interfaz Telegram en releases recientes. Telegram es el canal de menor esfuerzo y mayor impacto para ampliar cobertura.
 
 **En `gateway.py`, agregar al bloque de interfaces:**
 

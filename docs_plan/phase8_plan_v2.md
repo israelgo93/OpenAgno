@@ -320,7 +320,7 @@ registry = Registry(
 
 ### Contexto
 
-La cuenta WhatsApp Business ya está verificada y funciona con la API oficial de Meta (Cloud API). Se quiere AGREGAR la opción de vincular via QR (como OpenClaw) para tener flexibilidad.
+La cuenta WhatsApp Business ya está verificada y funciona con la API oficial de Meta (Cloud API). Se quiere AGREGAR la opción de vincular via QR para tener flexibilidad.
 
 ### Arquitectura modo dual
 
@@ -366,7 +366,7 @@ whatsapp:
   cloud_api:
     webhook_path: "/whatsapp/webhook"
 
-  # Modo qr_link — Vinculación via QR (como OpenClaw)
+  # Modo qr_link — Vinculación via QR (sin cuenta Business)
   # Requiere: servicio Baileys corriendo como sidecar
   qr_link:
     bridge_url: "http://localhost:3001"
@@ -622,7 +622,7 @@ volumes:
 if "whatsapp" in channels:
     wa_mode = _prompt_choice("Modo de WhatsApp?", {
         "1": "Cloud API (API oficial de Meta — requiere cuenta Business verificada)",
-        "2": "QR Link (vincular dispositivo escaneando QR — como OpenClaw)",
+        "2": "QR Link (vincular dispositivo escaneando QR — sin cuenta Business)",
         "3": "Dual (ambos modos simultáneamente)",
     }, default="1")
     wa_config = {"cloud_api": "cloud_api", "qr_link": "qr_link", "dual": "dual"}
@@ -723,5 +723,5 @@ tests/
 
 ---
 
-*Verificado contra: Linear DAT-190→241, gateway.log, docs.agno.com, Google Gemini model lifecycle, Agno GitHub repo, OpenClaw issues (Baileys QR), Whapi.cloud, Baileys @whiskeysockets*
+*Verificado contra: Linear DAT-190→241, gateway.log, docs.agno.com, Google Gemini model lifecycle, Agno GitHub repo, Baileys @whiskeysockets, Whapi.cloud*
 *26 de marzo de 2026*

@@ -2,8 +2,12 @@
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.
 
-Fase 8: Producción, Tools Expandidos, Studio Completo y WhatsApp Dual.
+Fase 8: Produccion, Tools Expandidos, Studio Completo y WhatsApp Dual.
 """
+import warnings
+warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 import inspect
 import os
 import time
@@ -305,7 +309,37 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 
 	@app.get("/whatsapp-qr/code")
 	async def wa_qr_code():
-		"""Obtener QR code para escanear."""
+		"""Pagina HTML con QR para escanear desde el navegador."""
+		from fastapi.responses import HTMLResponse
+		try:
+			async with httpx.AsyncClient() as client:
+				resp = await client.get(f"{bridge_url}/qr")
+				data = resp.json()
+			status = data.get("status", "unknown")
+			qr_data = data.get("qr")
+			if status == "connected":
+				return HTMLResponse("<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+					"<h2>WhatsApp vinculado</h2><p>El dispositivo ya esta conectado.</p></body></html>")
+			if not qr_data:
+				return HTMLResponse("<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+					f"<h2>QR no disponible</h2><p>Estado: {status}</p>"
+					"<p>Espera unos segundos y recarga la pagina.</p>"
+					"<script>setTimeout(()=>location.reload(),5000)</script></body></html>")
+			return HTMLResponse(
+				"<html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5'>"
+				"<h2>OpenAgno - WhatsApp QR</h2>"
+				"<p>Escanea desde WhatsApp &gt; Dispositivos vinculados</p>"
+				f"<img src='{qr_data}' style='width:300px;height:300px;border:8px solid white;border-radius:12px'/>"
+				"<p style='color:#888;margin-top:16px'>El QR se actualiza automaticamente</p>"
+				"<script>setTimeout(()=>location.reload(),30000)</script></body></html>"
+			)
+		except Exception as e:
+			return HTMLResponse(f"<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+				f"<h2>Bridge no disponible</h2><p>{e}</p></body></html>", status_code=502)
+
+	@app.get("/whatsapp-qr/code/json")
+	async def wa_qr_code_json():
+		"""QR como JSON (para integraciones programaticas)."""
 		try:
 			async with httpx.AsyncClient() as client:
 				resp = await client.get(f"{bridge_url}/qr")
@@ -316,28 +350,32 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 	@app.post("/whatsapp-qr/incoming")
 	async def wa_qr_incoming(request: dict):
 		"""Recibe mensajes del bridge y los procesa con el agente."""
-		from_number = request.get("from", "")
+		from_jid = request.get("from", "")
 		text = request.get("text", "")
 
 		if not text:
 			return {"status": "ignored", "reason": "empty message"}
 
+		logger.info(f"QR Bridge mensaje de {from_jid}: {text[:80]}")
+
 		try:
 			response = await agent.arun(
-				message=text,
-				user_id=from_number,
-				session_id=from_number,
+				input=text,
+				user_id=from_jid,
+				session_id=from_jid,
 			)
-			# Enviar respuesta de vuelta via bridge
 			response_text = response.content if hasattr(response, 'content') else str(response)
-			async with httpx.AsyncClient() as client:
-				await client.post(f"{bridge_url}/send", json={
-					"to": from_number,
+			logger.info(f"QR Bridge respuesta a {from_jid}: {response_text[:80]}")
+
+			async with httpx.AsyncClient(timeout=30) as client:
+				send_resp = await client.post(f"{bridge_url}/send", json={
+					"to": from_jid,
 					"text": response_text,
 				})
+				logger.info(f"QR Bridge send result: {send_resp.status_code}")
 			return {"status": "responded"}
 		except Exception as e:
-			logger.error(f"Error procesando mensaje QR: {e}")
+			logger.error(f"Error procesando mensaje QR de {from_jid}: {type(e).__name__}: {e}")
 			return {"status": "error", "error": str(e)}
 
 
@@ -466,10 +504,8 @@ if scheduler_cfg.get("enabled", True) and "scheduler" in _agent_os_params:
 		_sched_base = scheduler_cfg.get("base_url", f"http://127.0.0.1:{PORT}")
 		_scheduler_kwargs["scheduler_base_url"] = _sched_base
 		logger.info(f"Scheduler base_url: {_sched_base}")
-	logger.info(
-		"Scheduler AgentOS habilitado (poll cada %ss)",
-		_scheduler_kwargs.get("scheduler_poll_interval", 15),
-	)
+	_poll = _scheduler_kwargs.get("scheduler_poll_interval", 15)
+	logger.info(f"Scheduler AgentOS habilitado (poll cada {_poll}s)")
 
 if schedules:
 	if not scheduler_cfg.get("enabled", True):

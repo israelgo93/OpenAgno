@@ -15,7 +15,7 @@ optional:
   enabled: false
   config:
     sender_email: ${GMAIL_SENDER}
-    sender_name: Magno
+    sender_name: MagnoPM
     sender_passkey: ${GMAIL_PASSKEY}
     receiver_email: ${GMAIL_RECEIVER}
 - name: tavily
@@ -38,5 +38,5 @@ optional:
     stt_model: gpt-4o-mini-transcribe
     tts_enabled: false
     tts_model: tts-1
-    tts_voice: onyx
+    tts_voice: nova
 custom: []

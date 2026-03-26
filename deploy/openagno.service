@@ -1,18 +1,23 @@
 [Unit]
 Description=OpenAgno AI Agent Platform
 After=network.target
+Documentation=https://github.com/israelgo93/OpenAgno
 
 [Service]
 Type=simple
-User=openagno
-WorkingDirectory=/opt/openagno
-Environment=OPENAGNO_ROOT=/opt/openagno
-EnvironmentFile=/opt/openagno/.env
-ExecStart=/opt/openagno/.venv/bin/python service_manager.py start
-ExecStop=/opt/openagno/.venv/bin/python service_manager.py stop
-ExecReload=/opt/openagno/.venv/bin/python service_manager.py restart
+# --- Ajusta estos valores a tu instalacion ---
+# Opcion A: Usar install-service.sh que genera valores concretos
+# Opcion B: Copiar este archivo y reemplazar las rutas manualmente
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Proyectos/OpenAgno
+Environment=OPENAGNO_ROOT=/home/ubuntu/Proyectos/OpenAgno
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/ubuntu/Proyectos/OpenAgno/.env
+ExecStart=/home/ubuntu/Proyectos/OpenAgno/.venv/bin/python -u gateway.py
 Restart=on-failure
 RestartSec=5
+StandardOutput=append:/home/ubuntu/Proyectos/OpenAgno/gateway.log
+StandardError=append:/home/ubuntu/Proyectos/OpenAgno/gateway.log
 
 [Install]
 WantedBy=multi-user.target

@@ -1,8 +1,8 @@
 # 🚀 Plan de Implementación v3: Plataforma de Agentes IA con Agno
 
-## Evolución: OpenClaw → AgnoBot v3
+## Evolucion: AgnoBot v3
 
-**Objetivo:** Plataforma tipo OpenClaw construida sobre **Agno Framework**, con agentes auto-configurables, workspace parametrizable, persistencia unificada en PostgreSQL/Supabase (PgVector), y acceso autónomo a documentación oficial de Agno.
+**Objetivo:** Plataforma open-source construida sobre **Agno Framework**, con agentes auto-configurables, workspace parametrizable, persistencia unificada en PostgreSQL/Supabase (PgVector), y acceso autonomo a documentacion oficial de Agno.
 
 **Cambios clave respecto a v2:**
 

@@ -4,7 +4,7 @@ agent:
   role: Realiza busquedas web profundas y sintetiza informacion
   model:
     provider: aws_bedrock_claude
-    id: us.anthropic.claude-sonnet-4-6
+    id: us.anthropic.claude-opus-4-6-v1
   tools:
   - duckduckgo
   - crawl4ai

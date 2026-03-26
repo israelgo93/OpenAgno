@@ -92,14 +92,16 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 
 	channels = config.get("channels", [])
 	if "whatsapp" in channels:
-		wa_vars = [
-			"WHATSAPP_ACCESS_TOKEN",
-			"WHATSAPP_PHONE_NUMBER_ID",
-			"WHATSAPP_VERIFY_TOKEN",
-		]
-		for var in wa_vars:
-			if not os.getenv(var):
-				errors.append(f".env: falta {var} (requerido para canal WhatsApp)")
+		wa_mode = config.get("whatsapp", {}).get("mode", "cloud_api")
+		if wa_mode in ("cloud_api", "dual"):
+			wa_vars = [
+				"WHATSAPP_ACCESS_TOKEN",
+				"WHATSAPP_PHONE_NUMBER_ID",
+				"WHATSAPP_VERIFY_TOKEN",
+			]
+			for var in wa_vars:
+				if not os.getenv(var):
+					errors.append(f".env: falta {var} (requerido para WhatsApp Cloud API)")
 
 	if "slack" in channels:
 		if not os.getenv("SLACK_TOKEN"):

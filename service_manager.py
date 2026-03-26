@@ -25,120 +25,203 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PID_FILE = OPENAGNO_ROOT / "openagno.pid"
 LOG_FILE = OPENAGNO_ROOT / "gateway.log"
 HEALTH_URL = f"http://127.0.0.1:{PORT}/admin/health"
-HEALTH_INTERVAL = 30
+HEALTH_INTERVAL = 15
 RESTART_DELAY = 3
+MAX_START_WAIT = 30
 
 
 class GatewayDaemon:
-    def __init__(self):
-        self.process: subprocess.Popen | None = None
-        self._stop_event = threading.Event()
+	def __init__(self) -> None:
+		self.process: subprocess.Popen | None = None
+		self._stop_event = threading.Event()
+		self._log_fd = None
 
-    def start_gateway(self) -> None:
-        if self.process and self.process.poll() is None:
-            print(f"[daemon] Gateway ya corriendo (PID {self.process.pid})")
-            return
-        log_fd = open(LOG_FILE, "a")
-        self.process = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "gateway:app",
-             "--host", HOST, "--port", str(PORT), "--workers", "1",
-             "--log-level", "info"],
-            cwd=str(OPENAGNO_ROOT),
-            stdout=log_fd, stderr=subprocess.STDOUT,
-            env={**os.environ, "OPENAGNO_ROOT": str(OPENAGNO_ROOT)},
-        )
-        PID_FILE.write_text(str(self.process.pid))
-        print(f"[daemon] Gateway arrancado (PID {self.process.pid})")
+	def _open_log(self):
+		if self._log_fd and not self._log_fd.closed:
+			self._log_fd.close()
+		self._log_fd = open(LOG_FILE, "a", buffering=1)
+		return self._log_fd
 
-    def stop_gateway(self, timeout: int = 10) -> None:
-        if not self.process or self.process.poll() is not None:
-            return
-        pid = self.process.pid
-        self.process.send_signal(signal.SIGTERM)
-        try:
-            self.process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait()
-        if PID_FILE.exists():
-            PID_FILE.unlink()
-        print(f"[daemon] Gateway detenido (PID {pid})")
+	def start_gateway(self) -> None:
+		if self.process and self.process.poll() is None:
+			print(f"[daemon] Gateway ya corriendo (PID {self.process.pid})")
+			return
 
-    def restart_gateway(self) -> None:
-        self.stop_gateway()
-        time.sleep(RESTART_DELAY)
-        self.start_gateway()
+		log_fd = self._open_log()
 
-    def health_check(self) -> bool:
-        try:
-            import urllib.request
-            return urllib.request.urlopen(HEALTH_URL, timeout=5).status == 200
-        except Exception:
-            return False
+		env = {**os.environ, "OPENAGNO_ROOT": str(OPENAGNO_ROOT)}
+		env["PYTHONUNBUFFERED"] = "1"
 
-    def monitor_loop(self) -> None:
-        """Monitorea health + senal de reload."""
-        signal_file = OPENAGNO_ROOT / ".reload_requested"
-        while not self._stop_event.is_set():
-            # Gateway murio -> reiniciar
-            if self.process and self.process.poll() is not None:
-                print(f"[daemon] Gateway murio (exit={self.process.returncode}). Reiniciando...")
-                time.sleep(RESTART_DELAY)
-                self.start_gateway()
-            # Senal de reload del agente
-            if signal_file.exists():
-                print("[daemon] Senal de reload detectada.")
-                signal_file.unlink()
-                self.restart_gateway()
-            self._stop_event.wait(HEALTH_INTERVAL)
+		self.process = subprocess.Popen(
+			[sys.executable, "-u", "gateway.py"],
+			cwd=str(OPENAGNO_ROOT),
+			stdout=log_fd,
+			stderr=subprocess.STDOUT,
+			env=env,
+		)
+		PID_FILE.write_text(str(self.process.pid))
+		print(f"[daemon] Gateway arrancado (PID {self.process.pid})")
 
-    def run(self) -> None:
-        self.start_gateway()
-        monitor = threading.Thread(target=self.monitor_loop, daemon=True)
-        monitor.start()
+		# Esperar a que el health check responda
+		started = time.time()
+		while time.time() - started < MAX_START_WAIT:
+			if self.process.poll() is not None:
+				print(f"[daemon] Gateway fallo al arrancar (exit={self.process.returncode})")
+				print(f"[daemon] Revisa el log: {LOG_FILE}")
+				return
+			if self.health_check():
+				elapsed = time.time() - started
+				print(f"[daemon] Gateway listo en {elapsed:.1f}s -> http://{HOST}:{PORT}")
+				return
+			time.sleep(1)
 
-        def _shutdown(signum, frame):
-            self._stop_event.set()
-            self.stop_gateway()
-            sys.exit(0)
+		print(f"[daemon] Gateway arrancado pero health check no responde tras {MAX_START_WAIT}s")
 
-        signal.signal(signal.SIGTERM, _shutdown)
-        signal.signal(signal.SIGINT, _shutdown)
-        try:
-            while not self._stop_event.is_set():
-                self._stop_event.wait(1)
-        except KeyboardInterrupt:
-            _shutdown(signal.SIGINT, None)
+	def stop_gateway(self, timeout: int = 10) -> None:
+		if not self.process or self.process.poll() is not None:
+			if PID_FILE.exists():
+				PID_FILE.unlink()
+			return
+		pid = self.process.pid
+		self.process.send_signal(signal.SIGTERM)
+		try:
+			self.process.wait(timeout=timeout)
+		except subprocess.TimeoutExpired:
+			self.process.kill()
+			self.process.wait()
+		if PID_FILE.exists():
+			PID_FILE.unlink()
+		if self._log_fd and not self._log_fd.closed:
+			self._log_fd.close()
+		print(f"[daemon] Gateway detenido (PID {pid})")
+
+	def restart_gateway(self) -> None:
+		self.stop_gateway()
+		time.sleep(RESTART_DELAY)
+		self.start_gateway()
+
+	def health_check(self) -> bool:
+		try:
+			import urllib.request
+			return urllib.request.urlopen(HEALTH_URL, timeout=5).status == 200
+		except Exception:
+			return False
+
+	def monitor_loop(self) -> None:
+		"""Monitorea health + senal de reload."""
+		signal_file = OPENAGNO_ROOT / ".reload_requested"
+		health_fails = 0
+		while not self._stop_event.is_set():
+			# Gateway murio -> reiniciar
+			if self.process and self.process.poll() is not None:
+				print(f"[daemon] Gateway murio (exit={self.process.returncode}). Reiniciando...")
+				time.sleep(RESTART_DELAY)
+				self.start_gateway()
+				health_fails = 0
+			# Senal de reload del agente
+			elif signal_file.exists():
+				print("[daemon] Senal de reload detectada.")
+				signal_file.unlink()
+				self.restart_gateway()
+				health_fails = 0
+			# Health check periodico
+			elif self.process and self.process.poll() is None:
+				if not self.health_check():
+					health_fails += 1
+					if health_fails >= 3:
+						print(f"[daemon] Health check fallo {health_fails} veces. Reiniciando...")
+						self.restart_gateway()
+						health_fails = 0
+				else:
+					health_fails = 0
+			self._stop_event.wait(HEALTH_INTERVAL)
+
+	def run(self) -> None:
+		self.start_gateway()
+		monitor = threading.Thread(target=self.monitor_loop, daemon=True)
+		monitor.start()
+
+		def _shutdown(signum, frame):
+			print("\n[daemon] Apagando...")
+			self._stop_event.set()
+			self.stop_gateway()
+			sys.exit(0)
+
+		signal.signal(signal.SIGTERM, _shutdown)
+		signal.signal(signal.SIGINT, _shutdown)
+		try:
+			while not self._stop_event.is_set():
+				self._stop_event.wait(1)
+		except KeyboardInterrupt:
+			_shutdown(signal.SIGINT, None)
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Uso: python service_manager.py [start|stop|restart|status]")
-        sys.exit(1)
+def _kill_existing() -> bool:
+	"""Detiene el proceso existente si hay PID file."""
+	if not PID_FILE.exists():
+		return False
+	try:
+		pid = int(PID_FILE.read_text().strip())
+		os.kill(pid, signal.SIGTERM)
+		for _ in range(10):
+			try:
+				os.kill(pid, 0)
+				time.sleep(1)
+			except ProcessLookupError:
+				break
+		PID_FILE.unlink(missing_ok=True)
+		print(f"[daemon] Proceso anterior detenido (PID {pid})")
+		return True
+	except (ProcessLookupError, ValueError):
+		PID_FILE.unlink(missing_ok=True)
+		return False
 
-    daemon = GatewayDaemon()
-    cmd = sys.argv[1]
 
-    match cmd:
-        case "start":
-            daemon.run()
-        case "stop":
-            if PID_FILE.exists():
-                os.kill(int(PID_FILE.read_text().strip()), signal.SIGTERM)
-            else:
-                print("[daemon] No hay PID file")
-        case "restart":
-            if PID_FILE.exists():
-                os.kill(int(PID_FILE.read_text().strip()), signal.SIGTERM)
-                time.sleep(RESTART_DELAY)
-            daemon.run()
-        case "status":
-            pid = PID_FILE.read_text().strip() if PID_FILE.exists() else "N/A"
-            print(f"PID: {pid} | Health: {'OK' if daemon.health_check() else 'FAIL'}")
-        case _:
-            print(f"Comando desconocido: {cmd}")
-            sys.exit(1)
+def main() -> None:
+	if len(sys.argv) < 2:
+		print("Uso: python service_manager.py [start|stop|restart|status]")
+		sys.exit(1)
+
+	cmd = sys.argv[1]
+
+	match cmd:
+		case "start":
+			_kill_existing()
+			GatewayDaemon().run()
+		case "stop":
+			if not _kill_existing():
+				print("[daemon] No hay proceso corriendo")
+		case "restart":
+			_kill_existing()
+			time.sleep(RESTART_DELAY)
+			GatewayDaemon().run()
+		case "status":
+			daemon = GatewayDaemon()
+			pid = PID_FILE.read_text().strip() if PID_FILE.exists() else "N/A"
+			healthy = daemon.health_check()
+			running = False
+			if pid != "N/A":
+				try:
+					os.kill(int(pid), 0)
+					running = True
+				except (ProcessLookupError, ValueError):
+					pass
+			print(f"PID: {pid} | Proceso: {'ACTIVO' if running else 'INACTIVO'} | Health: {'OK' if healthy else 'FAIL'}")
+			if healthy:
+				try:
+					import urllib.request
+					import json
+					resp = urllib.request.urlopen(HEALTH_URL, timeout=5)
+					data = json.loads(resp.read())
+					print(f"Agentes: {data.get('agents', [])}")
+					print(f"Canales: {data.get('channels', [])}")
+					print(f"Modelo: {data.get('model', {}).get('provider', '?')}/{data.get('model', {}).get('id', '?')}")
+				except Exception:
+					pass
+		case _:
+			print(f"Comando desconocido: {cmd}")
+			sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+	main()

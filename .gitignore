@@ -50,3 +50,14 @@ workspace/knowledge/docs/*.docx
 # Service Manager (F6)
 openagno.pid
 .reload_requested
+
+# WhatsApp QR Bridge
+bridges/whatsapp-qr/node_modules/
+bridges/whatsapp-qr/session/
+bridges/whatsapp-qr/package-lock.json
+
+# Cursor IDE
+.cursor/
+
+# Logs locales
+log.txt

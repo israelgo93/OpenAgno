@@ -1,14 +1,12 @@
 agent:
-  name: Magno
+  name: MagnoPM
   id: agnobot-main
-  description: Orquestador de agentes y proyectos de innvoacion
+  description: Agente especializado en orquestacion y creacion agentes con el framwork
+    Agno.
 model:
   provider: aws_bedrock_claude
-  id: us.anthropic.claude-sonnet-4-6
+  id: us.anthropic.claude-opus-4-6-v1
   aws_region: us-east-1
-  fallback:
-    provider: google
-    id: gemini-flash-latest
 database:
   type: supabase
   knowledge_table: agnobot_knowledge_contents
@@ -20,13 +18,13 @@ vector:
 channels:
 - whatsapp
 whatsapp:
-  mode: dual
+  mode: qr_link
 memory:
   enable_agentic_memory: true
   num_history_runs: 5
 agentos:
   id: agnobot-gateway
-  name: Magno Platform
+  name: MagnoPM Platform
   port: 8000
   tracing: true
   enable_mcp_server: true
@@ -47,4 +45,4 @@ audio:
   stt_model: gpt-4o-mini-transcribe
   tts_enabled: false
   tts_model: tts-1
-  tts_voice: onyx
+  tts_voice: nova
