@@ -1,6 +1,8 @@
 """
 WorkspaceTools — El agente puede auto-configurarse.
 CRUD sobre workspace/ con backup automatico.
+
+Fase 7: Validacion de providers y tools en create_sub_agent.
 """
 import os
 import yaml
@@ -14,6 +16,12 @@ from agno.utils.log import logger
 OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.parent.resolve()))
 WORKSPACE_DIR = OPENAGNO_ROOT / "workspace"
 BACKUPS_DIR = OPENAGNO_ROOT / "backups"
+
+# F7 — 7.4.3: Proveedores de modelo validos
+VALID_PROVIDERS = {
+    "google", "openai", "anthropic",
+    "aws_bedrock_claude", "aws_bedrock",
+}
 
 
 class WorkspaceTools(Toolkit):
@@ -35,6 +43,23 @@ class WorkspaceTools(Toolkit):
             shutil.copy2(file_path, backup_path)
             return f"Backup: {backup_path.name}"
         return "Archivo nuevo, sin backup"
+
+    def _load_valid_tools(self) -> set[str]:
+        """Carga la lista de tools validos desde tools.yaml."""
+        tools_path = WORKSPACE_DIR / "tools.yaml"
+        if not tools_path.exists():
+            return set()
+        try:
+            data = yaml.safe_load(tools_path.read_text(encoding="utf-8")) or {}
+            valid = set()
+            for section in ("builtin", "optional"):
+                for tool in data.get(section, []):
+                    name = tool.get("name")
+                    if name:
+                        valid.add(name)
+            return valid
+        except Exception:
+            return set()
 
     def read_workspace_file(self, filename: str) -> str:
         """Lee un archivo del workspace. Ej: 'config.yaml', 'instructions.md'."""
@@ -68,7 +93,27 @@ class WorkspaceTools(Toolkit):
         tools: list[str], instructions: list[str],
         model_provider: str = "google", model_id: str = "gemini-2.0-flash",
     ) -> str:
-        """Crea un sub-agente en workspace/agents/."""
+        """Crea un sub-agente en workspace/agents/.
+
+        Valida provider y tools antes de crear el YAML (F7).
+        """
+        # F7 — 7.4.3: Validar provider
+        if model_provider not in VALID_PROVIDERS:
+            return (
+                f"ERROR: Provider '{model_provider}' no valido. "
+                f"Usa uno de: {', '.join(sorted(VALID_PROVIDERS))}"
+            )
+
+        # F7 — 7.4.3: Validar tools
+        if tools:
+            valid_tools = self._load_valid_tools()
+            invalid = [t for t in tools if t not in valid_tools]
+            if invalid:
+                return (
+                    f"ERROR: Tools no validos: {invalid}. "
+                    f"Disponibles: {', '.join(sorted(valid_tools))}"
+                )
+
         agent_data = {
             "agent": {
                 "name": name, "id": agent_id, "role": role,

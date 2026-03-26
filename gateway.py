@@ -2,7 +2,7 @@
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.
 
-Fase 6: Autonomia operativa, Bedrock, Background Hooks, Daemon, Scheduler nativo.
+Fase 7: Estabilizacion, Auto-Consciencia del Agente y Seguridad.
 """
 import inspect
 import os
@@ -176,6 +176,21 @@ if _needs_stt or _needs_tts or fallback_model:
 
 	async def _arun_wrapped(input="", **kwargs):
 		"""Wrapper completo de arun: STT entrada + fallback + TTS salida."""
+		# 0. Validar mensajes vacios (F7 — 7.3)
+		audio_list = kwargs.get("audio", None) or []
+		image_list = kwargs.get("images", None) or []
+		message_text = input if isinstance(input, str) else ""
+
+		if not message_text or not message_text.strip():
+			if audio_list:
+				# Se procesará via STT abajo
+				input = "[Audio recibido]"
+			elif image_list:
+				input = "[Imagen recibida]"
+			else:
+				logger.warning("Mensaje vacio descartado")
+				return None  # No procesar mensajes vacios
+
 		# 1. STT: transcribir audio si el modelo no soporta audio nativo
 		if _needs_stt:
 			audio_list = kwargs.pop("audio", None) or []
@@ -192,7 +207,7 @@ if _needs_stt or _needs_tts or fallback_model:
 		if fallback_model:
 			_maybe_restore_primary()
 
-		# 3. Ejecutar con retry/fallback ante rate-limit
+		# 3. Ejecutar con retry/fallback ante rate-limit (F7 — 7.2 mejorado)
 		try:
 			response = await _original_arun(input, **kwargs)
 		except Exception as exc:
@@ -205,7 +220,13 @@ if _needs_stt or _needs_tts or fallback_model:
 				except Exception as exc2:
 					logger.error(f"Tambien fallo el fallback: {exc2}")
 					raise
+			elif is_rate_limit_error(exc):
+				# Sin fallback configurado, pero es rate-limit
+				logger.error(f"Rate-limit sin fallback disponible: {exc}")
+				raise
 			else:
+				# F7 — 7.5: detectar 401 WhatsApp
+				_check_wa_auth_error(exc)
 				raise
 
 		# 4. TTS: generar audio de la respuesta para enviar por WhatsApp
@@ -272,7 +293,7 @@ async def lifespan(app: FastAPI):
 
 base_app = FastAPI(
 	title=config.get("agentos", {}).get("name", "AgnoBot Platform"),
-	version="0.6.0",
+	version="0.8.0",
 	lifespan=lifespan,
 )
 base_app.add_middleware(
@@ -309,6 +330,14 @@ if "slack" in channels:
 	interfaces.append(Slack(agent=main_agent))
 	logger.info("Canal Slack habilitado")
 
+if "telegram" in channels:
+	try:
+		from agno.os.interfaces.telegram import Telegram
+		interfaces.append(Telegram(agent=main_agent))
+		logger.info("Canal Telegram habilitado")
+	except ImportError:
+		logger.warning("Telegram no disponible — actualizar agno[os]")
+
 if config.get("a2a", {}).get("enabled", False):
 	try:
 		from agno.os.interfaces.a2a import A2A
@@ -344,6 +373,7 @@ if schedules:
 
 os_config = config.get("agentos", {})
 scheduler_cfg = config.get("scheduler", {})
+PORT = int(os.getenv("PORT", os_config.get("port", 8000)))
 
 _agent_os_params = inspect.signature(AgentOS.__init__).parameters
 _scheduler_kwargs: dict[str, object] = {}
@@ -353,6 +383,11 @@ if scheduler_cfg.get("enabled", True) and "scheduler" in _agent_os_params:
 		_scheduler_kwargs["scheduler_poll_interval"] = int(
 			scheduler_cfg.get("poll_interval", 15)
 		)
+	# F7 — 7.1: Fix scheduler_base_url para apuntar al puerto correcto
+	if "scheduler_base_url" in _agent_os_params:
+		_sched_base = scheduler_cfg.get("base_url", f"http://127.0.0.1:{PORT}")
+		_scheduler_kwargs["scheduler_base_url"] = _sched_base
+		logger.info(f"Scheduler base_url: {_sched_base}")
 	logger.info(
 		"Scheduler AgentOS habilitado (poll cada %ss)",
 		_scheduler_kwargs.get("scheduler_poll_interval", 15),
@@ -391,7 +426,22 @@ agent_os = AgentOS(
 	**_hooks_kwargs,
 )
 
-# === Endpoints admin (F6) ===
+# === F7 — 7.5: Alerta de token WhatsApp expirado ===
+_wa_auth_failed = False
+
+def _check_wa_auth_error(error: Exception):
+	"""Detecta si un error es por token WhatsApp expirado."""
+	global _wa_auth_failed
+	error_msg = str(error).lower()
+	if ("401" in error_msg or "unauthorized" in error_msg) and (
+		"access token" in error_msg or "session" in error_msg or "expired" in error_msg
+	):
+		if not _wa_auth_failed:
+			_wa_auth_failed = True
+			logger.critical("TOKEN WHATSAPP EXPIRADO — renovar en Meta Business")
+
+
+# === Endpoints admin (F6+F7) ===
 OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.resolve()))
 
 
@@ -416,13 +466,15 @@ async def admin_health():
 	audio_info = config.get("audio", {})
 	return {
 		"status": "healthy",
-		"version": "0.7.0",
+		"version": "0.8.0",
 		"agents": [a.id for a in all_agents],
 		"teams": [t.id for t in teams] if teams else [],
 		"channels": config.get("channels", []),
 		"model": model_info,
 		"audio": audio_info if audio_info else None,
 		"scheduler": scheduler_cfg.get("enabled", False),
+		"scheduler_base_url": _scheduler_kwargs.get("scheduler_base_url", "NOT SET"),
+		"whatsapp_auth": "expired" if _wa_auth_failed else "ok",
 	}
 
 
@@ -446,5 +498,4 @@ async def admin_fallback_restore():
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-	port = int(os.getenv("PORT", os_config.get("port", 8000)))
-	agent_os.serve(app="gateway:app", host="0.0.0.0", port=port)
+	agent_os.serve(app="gateway:app", host="0.0.0.0", port=PORT)

@@ -8,10 +8,12 @@ Lee archivos YAML/MD del workspace/ y construye:
 - Schedules desde workspace/schedules.yaml
 - Knowledge base con PgVector/Supabase
 - Auto-ingesta de documentos y URLs
-- Configuracion de canales (WhatsApp, Slack, Web)
+- Configuracion de canales (WhatsApp, Slack, Telegram, Web)
 - Integraciones declarativas en workspace/integrations/*/integration.yaml + config.env
 - Modelos AWS Bedrock (AwsBedrock + Claude via Bedrock) (F6)
 - WorkspaceTools y SchedulerTools para autonomia del agente (F6)
+- Auto-consciencia del agente via self_knowledge.md (F7)
+- GithubTools builtin de Agno (F7)
 """
 import copy
 import os
@@ -366,6 +368,13 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 					auto_transcribe=audio_cfg.get("auto_transcribe", True),
 				))
 				logger.info(f"AudioTools activado — STT: {audio_cfg.get('stt_model', 'whisper-1')}, TTS: {'ON' if audio_cfg.get('tts_enabled') else 'OFF'}")
+			case "github":
+				try:
+					from agno.tools.github import GithubTools
+					tools.append(GithubTools())
+					logger.info("GithubTools activado — requiere GITHUB_TOKEN")
+				except ImportError:
+					logger.warning("GithubTools no disponible — instalar PyGithub>=2.0")
 			case _:
 				logger.warning(f"Tool opcional desconocido: {name}")
 
@@ -538,45 +547,52 @@ def build_sub_agents(
 			logger.warning(f"Sin definicion 'agent' en {yaml_file.name}")
 			continue
 
-		model_cfg = agent_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
 		try:
+			model_cfg = agent_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
 			model = build_model(model_cfg)
-		except ValueError as e:
-			logger.warning(f"Modelo invalido en {yaml_file.name}: {e}")
+
+			agent_tools: list[Union[DuckDuckGoTools, Crawl4aiTools, ReasoningTools]] = []
+			for tool_name in agent_def.get("tools", []):
+				factory = BUILTIN_TOOL_MAP.get(tool_name)
+				if factory is not None:
+					agent_tools.append(factory({}))
+				else:
+					logger.warning(f"Tool '{tool_name}' no reconocido en {yaml_file.name}")
+
+			config = agent_def.get("config", {})
+
+			sub_memory_manager = None
+			if config.get("enable_agentic_memory", False):
+				sub_memory_manager = MemoryManager(model=model, db=db)
+
+			agent = Agent(
+				name=agent_def.get("name", "Sub Agent"),
+				id=agent_def.get("id", yaml_file.stem),
+				role=agent_def.get("role", ""),
+				model=model,
+				db=db,
+				knowledge=knowledge,
+				search_knowledge=knowledge is not None,
+				tools=agent_tools,
+				instructions=agent_def.get("instructions", []),
+				memory_manager=sub_memory_manager,
+				enable_agentic_memory=config.get("enable_agentic_memory", False),
+				tool_call_limit=config.get("tool_call_limit", 3),
+				add_datetime_to_context=config.get("add_datetime_to_context", True),
+				markdown=config.get("markdown", True),
+			)
+			agents.append(agent)
+			logger.info(f"Sub-agente cargado: {agent.name} ({agent.id})")
+
+		except Exception as e:
+			# F7 — 7.8: Logs mejorados para sub-agentes fallidos
+			logger.error(
+				f"Sub-agente '{yaml_file.stem}' NO cargado: {e}\n"
+				f"  Provider: {agent_def.get('model', {}).get('provider', '?')}\n"
+				f"  Tools: {agent_def.get('tools', [])}\n"
+				f"  Accion: Verificar provider y tools contra workspace/self_knowledge.md"
+			)
 			continue
-
-		agent_tools: list[Union[DuckDuckGoTools, Crawl4aiTools, ReasoningTools]] = []
-		for tool_name in agent_def.get("tools", []):
-			factory = BUILTIN_TOOL_MAP.get(tool_name)
-			if factory is not None:
-				agent_tools.append(factory({}))
-			else:
-				logger.warning(f"Tool '{tool_name}' no reconocido en {yaml_file.name}")
-
-		config = agent_def.get("config", {})
-
-		sub_memory_manager = None
-		if config.get("enable_agentic_memory", False):
-			sub_memory_manager = MemoryManager(model=model, db=db)
-
-		agent = Agent(
-			name=agent_def.get("name", "Sub Agent"),
-			id=agent_def.get("id", yaml_file.stem),
-			role=agent_def.get("role", ""),
-			model=model,
-			db=db,
-			knowledge=knowledge,
-			search_knowledge=knowledge is not None,
-			tools=agent_tools,
-			instructions=agent_def.get("instructions", []),
-			memory_manager=sub_memory_manager,
-			enable_agentic_memory=config.get("enable_agentic_memory", False),
-			tool_call_limit=config.get("tool_call_limit", 3),
-			add_datetime_to_context=config.get("add_datetime_to_context", True),
-			markdown=config.get("markdown", True),
-		)
-		agents.append(agent)
-		logger.info(f"Sub-agente cargado: {agent.name} ({agent.id})")
 
 	return agents
 
@@ -734,6 +750,14 @@ def load_workspace() -> dict[str, Any]:
 	tools.extend(mcp_tools)
 
 	instructions = load_instructions()
+
+	# F7 — 7.4.2: Inyectar self_knowledge.md para auto-consciencia del agente
+	self_knowledge_path = WORKSPACE_DIR / "self_knowledge.md"
+	if self_knowledge_path.exists():
+		self_knowledge = self_knowledge_path.read_text(encoding="utf-8")
+		instructions.append(self_knowledge)
+		logger.info("Self-knowledge cargado para auto-consciencia")
+
 	model_config = config.get("model", {})
 	model = build_model(model_config)
 	fallback_model = build_fallback_model(model_config)

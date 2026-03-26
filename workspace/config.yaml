@@ -4,11 +4,12 @@ agent:
   description: Es un orquestador de proyecto y tarea para Israel
 model:
   provider: aws_bedrock_claude
-  id: us.anthropic.claude-sonnet-4-6
+  id: us.anthropic.claude-opus-4-6-v1
   aws_region: us-east-1
   fallback:
-    provider: google
-    id: gemini-2.0-flash
+    provider: aws_bedrock_claude
+    id: us.anthropic.claude-sonnet-4-6
+    aws_region: us-east-1
 database:
   type: supabase
   knowledge_table: agnobot_knowledge_contents
@@ -19,6 +20,7 @@ vector:
   max_results: 5
 channels:
 - whatsapp
+- telegram  # F7: Canal Telegram
 memory:
   enable_agentic_memory: true
   num_history_runs: 5
@@ -36,6 +38,7 @@ scheduler:
   enabled: true
   poll_interval: 15
   timezone: America/Guayaquil
+  base_url: "http://127.0.0.1:8000"  # F7: debe coincidir con PORT
 knowledge:
   auto_ingest_docs: true
   auto_ingest_urls: false

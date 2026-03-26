@@ -2,17 +2,22 @@
 Knowledge Routes - Endpoints REST para gestion de la Knowledge Base.
 
 Incluye upload de documentos, ingesta de URLs, listado, busqueda y eliminacion.
+Fase 7: API Key auth, SQL injection fix, HTTPException re-raise.
 """
 import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text, create_engine
 
 from agno.knowledge.knowledge import Knowledge
 from agno.utils.log import logger
+from security import verify_api_key
+
+# F7 — 7.6.2: Whitelist de tablas permitidas para prevenir SQL Injection
+ALLOWED_TABLES = {"agnobot_knowledge_contents", "agnobot_knowledge_vectors"}
 
 
 class SearchRequest(BaseModel):
@@ -33,7 +38,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 	"""Crea el router de Knowledge con endpoints REST funcionales."""
 	router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
-	@router.post("/upload")
+	@router.post("/upload", dependencies=[Depends(verify_api_key)])
 	async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:
 		"""Recibe un archivo y lo inserta en la Knowledge Base."""
 		allowed_extensions = {".pdf", ".txt", ".md", ".csv", ".docx", ".json"}
@@ -68,7 +73,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 		finally:
 			Path(tmp_path).unlink(missing_ok=True)
 
-	@router.post("/ingest-urls")
+	@router.post("/ingest-urls", dependencies=[Depends(verify_api_key)])
 	async def ingest_urls(request: IngestUrlsRequest) -> dict[str, object]:
 		"""Ingesta una lista de URLs en la Knowledge Base."""
 		results: list[dict[str, str]] = []
@@ -88,7 +93,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 		ok_count = sum(1 for r in results if r["status"] == "ok")
 		return {"results": results, "total": len(results), "ok": ok_count}
 
-	@router.get("/list")
+	@router.get("/list", dependencies=[Depends(verify_api_key)])
 	async def list_documents() -> dict[str, object]:
 		"""Lista documentos unicos en la Knowledge Base."""
 		try:
@@ -99,6 +104,8 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 					table = getattr(
 						contents_db, "knowledge_table", "agnobot_knowledge_contents"
 					)
+					if table not in ALLOWED_TABLES:
+						raise HTTPException(400, "Tabla no permitida")
 					with engine.connect() as conn:
 						result = conn.execute(
 							text(
@@ -113,11 +120,13 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 					return {"documents": docs, "count": len(docs)}
 
 			return {"documents": [], "count": 0, "message": "Sin contents_db"}
+		except HTTPException:
+			raise  # F7 — 7.6.3: SIEMPRE re-raise
 		except Exception as e:
 			logger.warning(f"Error al listar documentos: {e}")
 			return {"documents": [], "count": 0, "message": "Knowledge table no inicializada"}
 
-	@router.delete("/{doc_name}")
+	@router.delete("/{doc_name}", dependencies=[Depends(verify_api_key)])
 	async def delete_document(doc_name: str) -> dict[str, str]:
 		"""Elimina un documento de la Knowledge Base por nombre."""
 		try:
@@ -133,6 +142,12 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 						vector_table = getattr(
 							knowledge.vector_db, "table_name", None
 						)
+
+					# F7 — 7.6.2: Validar tablas contra whitelist
+					if table not in ALLOWED_TABLES:
+						raise HTTPException(400, "Tabla no permitida")
+					if vector_table and vector_table not in ALLOWED_TABLES:
+						raise HTTPException(400, "Tabla de vectores no permitida")
 
 					with engine.connect() as conn:
 						conn.execute(
@@ -162,7 +177,7 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			logger.error(f"Error al eliminar documento: {e}")
 			raise HTTPException(status_code=500, detail=str(e))
 
-	@router.post("/search")
+	@router.post("/search", dependencies=[Depends(verify_api_key)])
 	async def search_knowledge(request: SearchRequest) -> dict[str, object]:
 		"""Busqueda semantica en la Knowledge Base."""
 		try:
@@ -177,6 +192,8 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 					"score": getattr(doc, "score", None),
 				})
 			return {"query": request.query, "results": documents, "count": len(documents)}
+		except HTTPException:
+			raise  # F7 — 7.6.3: SIEMPRE re-raise
 		except Exception as e:
 			logger.warning(f"Error en busqueda: {e}")
 			return {"query": request.query, "results": [], "count": 0}

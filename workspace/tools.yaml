@@ -39,4 +39,7 @@ optional:
     tts_enabled: false
     tts_model: gpt-4o-mini-tts
     tts_voice: onyx
+- name: github
+  enabled: false  # Activar cuando se configure GITHUB_TOKEN
+  description: "Acceso a repositorios GitHub (issues, PRs, codigo)"
 custom: []

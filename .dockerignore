@@ -1,0 +1,32 @@
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# Backups y temporales
+backups/
+tmp/
+*.log
+
+# Documentacion de plan (no necesaria en imagen)
+docs_plan/
+
+# OS files
+.DS_Store
+Thumbs.db

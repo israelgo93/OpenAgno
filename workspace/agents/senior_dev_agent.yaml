@@ -21,8 +21,8 @@ agent:
     el riesgo.
   - Sugieres siempre ejemplos de código mejorado cuando sea posible.
   model:
-    id: anthropic.claude-3-5-haiku-20241022-v1:0
-    provider: bedrock
+    provider: aws_bedrock_claude
+    id: us.anthropic.claude-opus-4-6-v1
   name: Senior Developer Agent
   role: Agente desarrollador senior especializado en revisión y análisis de código.
     Detecta bugs, vulnerabilidades, malas prácticas, y sugiere mejoras de arquitectura,

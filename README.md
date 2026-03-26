@@ -7,7 +7,7 @@
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://docs.agno.com"><img src="https://img.shields.io/badge/Agno-Framework-6366F1?style=flat-square" alt="Agno"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/v0.7.0-Audio_Pipeline-green?style=flat-square" alt="Status"></a>
+    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/v0.8.0-Estabilizacion_Seguridad-green?style=flat-square" alt="Status"></a>
   </p>
 </p>
 
@@ -15,13 +15,13 @@
 
 ## Que es OpenAgno?
 
-OpenAgno es una plataforma open-source para construir agentes IA autonomos y multimodales, listos para **WhatsApp**, **Slack** y **Web**. Combina un **workspace declarativo** (YAML + Markdown) con **persistencia unificada** en PostgreSQL/Supabase, permitiendo configurar agentes completos sin escribir codigo.
+OpenAgno es una plataforma open-source para construir agentes IA autonomos y multimodales, listos para **WhatsApp**, **Slack**, **Telegram** y **Web**. Combina un **workspace declarativo** (YAML + Markdown) con **persistencia unificada** en PostgreSQL/Supabase, permitiendo configurar agentes completos sin escribir codigo.
 
 Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno ofrece:
 
 - **Configuracion sin codigo** — Define tu agente con archivos YAML y Markdown
 - **Multimodal** — Procesa texto, imagenes, video y audio
-- **Multi-canal nativo** — WhatsApp, Slack y Web desde un unico gateway
+- **Multi-canal nativo** — WhatsApp, Slack, Telegram y Web desde un unico gateway
 - **Sub-agentes dinamicos** — Carga sub-agentes desde YAML sin tocar codigo
 - **Teams multi-agente** — Equipos con modos coordinate, route, broadcast y tasks
 - **Memoria persistente** — MemoryManager + PostgresDb para memoria agentic entre sesiones
@@ -39,10 +39,13 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 - **CLI de Onboarding** — Wizard interactivo genera workspace completo
 - **Admin programatico** — Gestiona sesiones, memorias y knowledge via CLI
 - **Deploy listo** — systemd unit + PID file + health check
+- **Auto-consciencia** — El agente sabe sus providers, tools y MCPs validos (v0.8)
+- **Seguridad API** — Autenticacion por API Key en endpoints REST (v0.8)
+- **GithubTools** — Acceso a repositorios GitHub (issues, PRs, codigo) (v0.8)
 
 ---
 
-## Arquitectura (v0.7)
+## Arquitectura (v0.8)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -60,12 +63,15 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 │  │  │   └── TTS: texto → audio (GPT-4o-mini-tts)    │   │
 │  │  ├── Agente Principal                             │   │
 │  │  │   ├── Modelo: Bedrock Claude / Gemini / GPT    │   │
+│  │  │   ├── Self-Knowledge (auto-consciencia F7)     │   │
 │  │  │   ├── AudioTools (STT + TTS)                   │   │
 │  │  │   ├── WorkspaceTools (CRUD workspace + reload) │   │
 │  │  │   ├── SchedulerTools (via REST API nativa)     │   │
+│  │  │   ├── GithubTools (issues, PRs, codigo F7)     │   │
 │  │  │   └── MCP (docs.agno.com + custom)             │   │
+│  │  ├── Security: API Key auth (F7)                  │   │
 │  │  ├── POST /admin/reload (senal al daemon)         │   │
-│  │  ├── GET  /admin/health (status + fallback info)  │   │
+│  │  ├── GET  /admin/health (status + WA auth + sched)│   │
 │  │  └── POST /schedules (API nativa AgentOS)         │   │
 │  └───────────────────────────────────────────────────┘   │
 │                                                           │
@@ -502,6 +508,37 @@ curl "https://tu-dominio.com/whatsapp/webhook?hub.mode=subscribe&hub.verify_toke
 
 ---
 
+## Seguridad (v0.8)
+
+### API Key
+
+Protege los endpoints REST con una API Key. Configura en `.env`:
+
+```bash
+OPENAGNO_API_KEY=genera_con_openssl_rand_hex_32
+```
+
+Todos los endpoints de Knowledge (`/knowledge/*`) requieren el header `X-API-Key`. Sin la variable configurada, el acceso es libre (modo desarrollo).
+
+```bash
+# Ejemplo con API Key
+curl -H "X-API-Key: tu_api_key" http://localhost:8000/knowledge/list
+```
+
+### SQL Injection Prevention
+
+Los nombres de tabla en consultas SQL estan protegidos por whitelist (`ALLOWED_TABLES`). Solo se permiten las tablas de knowledge configuradas.
+
+### Docker
+
+Las credenciales de PostgreSQL en `docker-compose.yml` ahora usan variables de entorno:
+
+```yaml
+POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+```
+
+---
+
 ## Canales
 
 ### WhatsApp
@@ -539,6 +576,22 @@ channels:
 El webhook de Slack se registra automaticamente en `/slack/events`. Responde a @menciones en canales y a todos los DMs. Thread timestamps como `session_id`.
 
 Webhook: `https://tu-dominio.com/slack/events` (requiere [dominio + SSL](#dominio-personalizado--ssl-opcional)).
+
+### Telegram (v0.8)
+
+Canal via Telegram Bot. Requiere crear un bot con @BotFather y obtener el token.
+
+```bash
+TELEGRAM_TOKEN=bot_token_from_botfather
+```
+
+Activa el canal en `workspace/config.yaml`:
+
+```yaml
+channels:
+  - whatsapp
+  - telegram
+```
 
 ### Web (Studio)
 
@@ -655,7 +708,8 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **F4: Remote Agents** | Agentes distribuidos + MCP avanzado + A2A | Planificada |
 | **F5: Scheduler + Knowledge** | Cron AgentOS, auto-ingesta, Tavily MCP/tool, validador extendido | Completada |
 | **F6: Autonomia** | Daemon, Bedrock, WorkspaceTools, SchedulerTools, SSL/Dominio | Completada |
-| **v0.7: Audio + Fallback** | AudioTools (STT+TTS), fallback inteligente ante 429, audio WhatsApp | **Completada** |
+| **v0.7: Audio + Fallback** | AudioTools (STT+TTS), fallback inteligente ante 429, audio WhatsApp | Completada |
+| **v0.8: Estabilizacion + Seguridad** | Auto-consciencia, seguridad API, Telegram, GithubTools, fixes criticos | **Completada** |
 
 ### Fase 6 (completada)
 
@@ -672,6 +726,25 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 - **Modelos actualizados** — IDs de Bedrock actualizados a Claude Opus 4.6 y Sonnet 4.6
 - **Modelo Fallback** — Soporte para modelo de respaldo en caso de rate limits
 - **CLI expandido** — Comandos interactivos `doctor`, `configure` y `fallback`
+
+### v0.8 (completada)
+
+- **Auto-consciencia del agente** — `workspace/self_knowledge.md` con providers, tools y reglas validas
+- **Validacion de sub-agentes** — Provider y tools validados antes de crear YAML
+- **Fix scheduler base_url** — Schedules ahora apuntan al puerto correcto del gateway
+- **Fix fallback 429** — Intercepta rate-limit post-error y reintenta con modelo fallback
+- **Fix mensajes vacios** — No envia mensajes vacios al modelo (previene error 400)
+- **Seguridad API** — `security.py` con autenticacion por API Key en endpoints REST
+- **SQL Injection fix** — Whitelist de tablas permitidas en knowledge_routes
+- **Docker seguro** — Credenciales via variables de entorno
+- **Alerta WhatsApp** — Detecta token expirado y reporta en `/admin/health`
+- **Canal Telegram** — Interface nativa de Agno para Telegram
+- **GithubTools** — Acceso a repositorios GitHub (issues, PRs, codigo)
+- **Validacion de schedules** — Expresion cron y timezone validados pre-envio
+- **Logs mejorados** — Sub-agentes fallidos muestran provider, tools y accion
+- **Dependencias pineadas** — Versiones minimas en requirements.txt
+- **`.dockerignore`** — Excluye .env, backups, __pycache__ de imagenes Docker
+- **Instrucciones de extension** — El agente consulta Agno docs antes de inventar tools
 
 ---
 
@@ -710,6 +783,13 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **Audio Pipeline** | STT (Whisper/GPT-4o-mini) + TTS automatico para modelos sin audio nativo |
 | **Fallback inteligente** | Ante rate-limit 429, swap + retry automatico dentro de arun |
 | **AudioTools** | Toolkit con `transcribe_audio()`, `text_to_speech()`, `generate_tts_bytes()` |
+| **Auto-consciencia (v0.8)** | Self-knowledge: el agente conoce sus providers, tools y MCPs validos |
+| **Seguridad API (v0.8)** | API Key auth en endpoints REST (`X-API-Key`) |
+| **SQL Injection fix (v0.8)** | Whitelist de tablas para prevenir inyeccion SQL |
+| **Canal Telegram (v0.8)** | Interface Telegram nativa via Agno |
+| **GithubTools (v0.8)** | Acceso a repositorios GitHub desde el agente |
+| **Validacion sub-agentes (v0.8)** | Provider y tools validados antes de crear YAML |
+| **Validacion schedules (v0.8)** | Cron y timezone validados pre-envio |
 
 ---
 
@@ -772,9 +852,11 @@ OpenAgno/
     phase4_validation_phase5_plan.md
     phase5_validation_phase6_plan_CORRECTED.md
   setup.sh                   # Setup rapido: venv + deps + wizard + validacion
-  .env.example               # Template de variables (incluye AWS)
-  requirements.txt           # Dependencias (incluye boto3)
-  docker-compose.yml         # PostgreSQL pgvector local
+  security.py                # F7: API Key auth para endpoints REST
+  .env.example               # Template de variables (incluye AWS, Telegram, GitHub)
+  .dockerignore              # F7: Excluye .env, backups, __pycache__ de Docker
+  requirements.txt           # Dependencias pineadas (incluye PyGithub)
+  docker-compose.yml         # PostgreSQL pgvector local (credenciales via env)
 ```
 
 ---
