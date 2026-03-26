@@ -3,8 +3,8 @@ agent:
   id: research-agent
   role: Realiza busquedas web profundas y sintetiza informacion
   model:
-    provider: google
-    id: gemini-2.5-flash
+    provider: aws_bedrock_claude
+    id: us.anthropic.claude-sonnet-4-6
   tools:
   - duckduckgo
   - crawl4ai

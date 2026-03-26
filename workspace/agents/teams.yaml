@@ -7,7 +7,7 @@ teams:
   - research-agent
   model:
     provider: aws_bedrock_claude
-    id: us.anthropic.claude-opus-4-20250805-v1:0
+    id: us.anthropic.claude-sonnet-4-6
   instructions:
   - Coordina entre el agente principal y el agente de investigacion.
   - Usa el agente de investigacion para busquedas web profundas.
