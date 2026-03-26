@@ -1,10 +1,21 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion, downloadMediaMessage } = require('@whiskeysockets/baileys');
 const express = require('express');
 const QRCode = require('qrcode');
+const qrcodeTerminal = require('qrcode-terminal');
 const pino = require('pino');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
+
+// Evitar que errores no capturados maten el proceso
+process.on('unhandledRejection', (err) => {
+	console.error('Error no capturado (promise):', err?.message || err);
+});
+process.on('uncaughtException', (err) => {
+	console.error('Error no capturado (exception):', err?.message || err);
+});
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8000';
 const SESSION_DIR = process.env.SESSION_DIR || './session';
@@ -18,6 +29,17 @@ let currentQR = null;
 let connectionStatus = 'disconnected';
 let retryCount = 0;
 
+/**
+ * Elimina el directorio de sesion para forzar nueva vinculacion QR.
+ */
+function clearSession() {
+	const sessionPath = path.resolve(SESSION_DIR);
+	if (fs.existsSync(sessionPath)) {
+		fs.rmSync(sessionPath, { recursive: true, force: true });
+		console.log('Sesion eliminada — se generara nuevo QR al reconectar.');
+	}
+}
+
 async function connectWhatsApp() {
 	if (retryCount >= MAX_RETRIES) {
 		console.log(`Maximo de reintentos (${MAX_RETRIES}) alcanzado. Reinicia el bridge manualmente.`);
@@ -26,8 +48,11 @@ async function connectWhatsApp() {
 	}
 
 	const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
+	const { version, isLatest } = await fetchLatestBaileysVersion();
+	console.log(`Iniciando Baileys con version WA: ${version.join('.')} (isLatest: ${isLatest})`);
 
 	sock = makeWASocket({
+		version,
 		auth: state,
 		browser: Browsers.ubuntu('Chrome'),
 		logger: logger,
@@ -42,7 +67,18 @@ async function connectWhatsApp() {
 			currentQR = qr;
 			connectionStatus = 'waiting_qr';
 			retryCount = 0;
-			console.log('QR generado - escanear desde WhatsApp > Dispositivos vinculados');
+
+			// Renderizar QR grande en la terminal para escanear directamente
+			console.log('\n' + '='.repeat(60));
+			console.log('  ESCANEA ESTE CODIGO QR DESDE WHATSAPP');
+			console.log('  WhatsApp > Configuracion > Dispositivos vinculados');
+			console.log('='.repeat(60) + '\n');
+			qrcodeTerminal.generate(qr, { small: false }, (qrAscii) => {
+				console.log(qrAscii);
+				console.log('\n' + '='.repeat(60));
+				console.log('  Tambien disponible en: http://localhost:' + PORT + '/qr/image');
+				console.log('='.repeat(60) + '\n');
+			});
 		}
 
 		if (connection === 'open') {
@@ -63,8 +99,12 @@ async function connectWhatsApp() {
 				console.log(`Reconectando en ${delay / 1000}s (intento ${retryCount}/${MAX_RETRIES})...`);
 				setTimeout(connectWhatsApp, delay);
 			} else {
-				console.log('Sesion cerrada (loggedOut). Limpia ./session y reinicia para nuevo QR.');
+				console.log('Sesion cerrada (loggedOut). Limpiando sesion y regenerando QR...');
 				connectionStatus = 'logged_out';
+				// Auto-limpiar sesion y reconectar para generar nuevo QR
+				clearSession();
+				retryCount = 0;
+				setTimeout(connectWhatsApp, 2000);
 			}
 		}
 	});
@@ -79,18 +119,57 @@ async function connectWhatsApp() {
 			if (msg.key.remoteJid === 'status@broadcast') continue;
 
 			const jid = msg.key.remoteJid;
-			const text = msg.message?.conversation
-				|| msg.message?.extendedTextMessage?.text
-				|| msg.message?.imageMessage?.caption
-				|| msg.message?.videoMessage?.caption
+			let normalizedMessage = msg.message?.ephemeralMessage?.message 
+				|| msg.message?.viewOnceMessage?.message
+				|| msg.message?.viewOnceMessageV2?.message
+				|| msg.message?.documentWithCaptionMessage?.message
+				|| msg.message;
+
+			let text = normalizedMessage?.conversation
+				|| normalizedMessage?.extendedTextMessage?.text
+				|| normalizedMessage?.imageMessage?.caption
+				|| normalizedMessage?.videoMessage?.caption
 				|| '';
 
-			console.log(`Mensaje de ${jid}: "${text.substring(0, 80)}"`);
+			let mediaData = null;
+			let mimeType = null;
+			let msgType = 'text';
 
-			if (!text) {
-				console.log(`  (sin texto, tipo: ${Object.keys(msg.message).join(', ')})`);
+			if (normalizedMessage?.audioMessage) {
+				msgType = 'audio';
+				mimeType = normalizedMessage.audioMessage.mimetype;
+			} else if (normalizedMessage?.imageMessage) {
+				msgType = 'image';
+				mimeType = normalizedMessage.imageMessage.mimetype;
+			} else if (normalizedMessage?.documentMessage) {
+				msgType = 'document';
+				mimeType = normalizedMessage.documentMessage.mimetype;
+			}
+
+			if (!text && msgType === 'text') {
+				console.log(`  (omitido: mensaje sin texto ni media soportada)`);
 				continue;
 			}
+
+			// Descargar media si existe
+			if (msgType !== 'text') {
+				try {
+					console.log(`  Descargando media tipo ${msgType}...`);
+					const buffer = await downloadMediaMessage(
+						msg,
+						'buffer',
+						{},
+						{ logger }
+					);
+					mediaData = buffer.toString('base64');
+					if (!text) text = `[Mensaje de ${msgType} recibido]`;
+				} catch (err) {
+					console.error(`Error descargando media:`, err.message);
+					continue;
+				}
+			}
+
+			console.log(`Mensaje de ${jid}: "${text.substring(0, 80)}" ${msgType !== 'text' ? '(con media)' : ''}`);
 
 			try {
 				const resp = await fetch(`${GATEWAY_URL}/whatsapp-qr/incoming`, {
@@ -99,6 +178,9 @@ async function connectWhatsApp() {
 					body: JSON.stringify({
 						from: jid,
 						text: text,
+						type: msgType,
+						mimeType: mimeType,
+						media: mediaData,
 						message_id: msg.key.id,
 						timestamp: msg.messageTimestamp,
 					}),
@@ -155,6 +237,7 @@ app.post('/restart', (req, res) => {
 	if (sock) {
 		try { sock.end(); } catch (e) { /* ignore */ }
 	}
+	clearSession();
 	connectWhatsApp();
 	res.json({ status: 'restarting' });
 });

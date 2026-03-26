@@ -190,6 +190,7 @@ Canal oficial via Meta Business API. Requiere cuenta Business verificada.
 WHATSAPP_ACCESS_TOKEN=tu_token
 WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
 WHATSAPP_VERIFY_TOKEN=tu_verify_token
+WHATSAPP_APP_SECRET=tu_app_secret # Requerido en Produccion
 ```
 
 Configura el webhook de Meta apuntando a `https://tu-dominio/whatsapp/webhook`.

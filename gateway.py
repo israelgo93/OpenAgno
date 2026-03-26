@@ -90,6 +90,9 @@ if fallback_model:
 	)
 
 
+# Referencia directa a arun sin wrapper, para usar en QR bridge
+_qr_direct_arun = main_agent.arun
+
 # === Wrapper inteligente de arun: STT + TTS + Fallback automatico ===
 audio_config = config.get("audio", {})
 model_provider = config.get("model", {}).get("provider", "google")
@@ -352,19 +355,54 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 		"""Recibe mensajes del bridge y los procesa con el agente."""
 		from_jid = request.get("from", "")
 		text = request.get("text", "")
+		msg_type = request.get("type", "text")
+		mime_type = request.get("mimeType", "")
+		media_b64 = request.get("media", "")
 
-		if not text:
+		if not text and msg_type == "text":
 			return {"status": "ignored", "reason": "empty message"}
 
-		logger.info(f"QR Bridge mensaje de {from_jid}: {text[:80]}")
+		logger.info(f"QR Bridge mensaje de {from_jid}: {text[:80]} (tipo: {msg_type})")
 
 		try:
-			response = await agent.arun(
-				input=text,
+			media_bytes = None
+			if media_b64:
+				import base64
+				try:
+					media_bytes = base64.b64decode(media_b64)
+				except Exception as e:
+					logger.error(f"Error decodificando media b64: {e}")
+
+			# Llamar al agente directamente via _qr_direct_arun
+			response = await _qr_direct_arun(
+				text,
 				user_id=from_jid,
 				session_id=from_jid,
+				media_bytes=media_bytes,
+				msg_type=msg_type,
+				mime_type=mime_type,
 			)
-			response_text = response.content if hasattr(response, 'content') else str(response)
+
+			# Extraer texto de la respuesta de forma segura
+			response_text = None
+			if response is not None:
+				if hasattr(response, 'content') and response.content is not None:
+					response_text = str(response.content)
+				elif hasattr(response, 'messages') and response.messages:
+					# Fallback: tomar el ultimo mensaje del asistente
+					for msg in reversed(response.messages):
+						role = getattr(msg, 'role', '')
+						content = getattr(msg, 'content', None)
+						if role == 'assistant' and content:
+							response_text = str(content)
+							break
+
+			if not response_text or not response_text.strip() or response_text == "None":
+				response_text = "Lo siento, no pude procesar tu mensaje. Intenta de nuevo."
+				logger.warning(f"QR Bridge respuesta vacia/None para {from_jid}, enviando fallback")
+			else:
+				response_text = response_text.strip()
+
 			logger.info(f"QR Bridge respuesta a {from_jid}: {response_text[:80]}")
 
 			async with httpx.AsyncClient(timeout=30) as client:
@@ -376,6 +414,15 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 			return {"status": "responded"}
 		except Exception as e:
 			logger.error(f"Error procesando mensaje QR de {from_jid}: {type(e).__name__}: {e}")
+			# Enviar mensaje de error amigable al usuario en lugar de silenciar
+			try:
+				async with httpx.AsyncClient(timeout=10) as client:
+					await client.post(f"{bridge_url}/send", json={
+						"to": from_jid,
+						"text": "Ocurrio un error procesando tu mensaje. Intenta de nuevo en unos segundos.",
+					})
+			except Exception:
+				pass
 			return {"status": "error", "error": str(e)}
 
 

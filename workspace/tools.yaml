@@ -15,7 +15,7 @@ optional:
   enabled: false
   config:
     sender_email: ${GMAIL_SENDER}
-    sender_name: MagnoPM
+    sender_name: MAGNO
     sender_passkey: ${GMAIL_PASSKEY}
     receiver_email: ${GMAIL_RECEIVER}
 - name: tavily

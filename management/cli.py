@@ -542,6 +542,7 @@ def run_onboarding() -> None:
 			whatsapp_vars["WHATSAPP_ACCESS_TOKEN"] = _prompt("Access Token")
 			whatsapp_vars["WHATSAPP_PHONE_NUMBER_ID"] = _prompt("Phone Number ID")
 			whatsapp_vars["WHATSAPP_VERIFY_TOKEN"] = _prompt("Verify Token")
+			whatsapp_vars["WHATSAPP_APP_SECRET"] = _prompt("App Secret (Opcional, presiona enter para omitir)", "")
 			whatsapp_vars["WHATSAPP_WEBHOOK_URL"] = _prompt("Webhook URL")
 
 	slack_vars: dict[str, str] = {}
@@ -1328,9 +1329,10 @@ def _configure_channels(config: dict) -> None:
 
 	if "whatsapp" in channels and "whatsapp" not in current:
 		print("\n  Configuracion WhatsApp:")
-		_update_env_var("WHATSAPP_ACCESS_TOKEN", _prompt("Access Token"))
-		_update_env_var("WHATSAPP_PHONE_NUMBER_ID", _prompt("Phone Number ID"))
-		_update_env_var("WHATSAPP_VERIFY_TOKEN", _prompt("Verify Token"))
+		_update_env_var("WHATSAPP_ACCESS_TOKEN", _prompt("Access Token", os.getenv("WHATSAPP_ACCESS_TOKEN", "")))
+		_update_env_var("WHATSAPP_PHONE_NUMBER_ID", _prompt("Phone Number ID", os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")))
+		_update_env_var("WHATSAPP_VERIFY_TOKEN", _prompt("Verify Token", os.getenv("WHATSAPP_VERIFY_TOKEN", "")))
+		_update_env_var("WHATSAPP_APP_SECRET", _prompt("App Secret", os.getenv("WHATSAPP_APP_SECRET", "")))
 
 	if "slack" in channels and "slack" not in current:
 		print("\n  Configuracion Slack:")
