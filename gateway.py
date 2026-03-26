@@ -99,6 +99,36 @@ model_provider = config.get("model", {}).get("provider", "google")
 _needs_stt = audio_config.get("auto_transcribe", False) and model_provider in NON_AUDIO_PROVIDERS
 _needs_tts = audio_config.get("tts_enabled", False) and model_provider in NON_AUDIO_PROVIDERS
 
+# === Deduplicacion de mensajes (anti ghost messages) ===
+_msg_dedup: dict[str, float] = {}
+_MSG_DEDUP_TTL = 30.0  # segundos — WhatsApp re-entrega cada ~30s
+
+def _is_duplicate_message(user_id: str, text: str, has_audio: bool, has_images: bool) -> bool:
+	"""Detecta mensajes duplicados re-entregados por WhatsApp."""
+	# Generar key unica: user + hash del contenido
+	import hashlib
+	content_key = text.strip().lower() if text else ""
+	if has_audio:
+		content_key += "|audio"
+	if has_images:
+		content_key += "|image"
+	dedup_key = f"{user_id}:{hashlib.md5(content_key.encode()).hexdigest()}"
+
+	now = time.time()
+	# Limpiar entradas expiradas
+	expired = [k for k, ts in _msg_dedup.items() if now - ts > _MSG_DEDUP_TTL]
+	for k in expired:
+		del _msg_dedup[k]
+
+	if dedup_key in _msg_dedup:
+		elapsed = now - _msg_dedup[dedup_key]
+		logger.warning(f"Mensaje duplicado ignorado de {user_id} (hace {elapsed:.1f}s)")
+		return True
+
+	_msg_dedup[dedup_key] = now
+	return False
+
+
 if _needs_stt or _needs_tts or fallback_model:
 	import tempfile
 	from agno.media import Audio as AgnoAudio
@@ -180,11 +210,16 @@ if _needs_stt or _needs_tts or fallback_model:
 		return response
 
 	async def _arun_wrapped(input="", **kwargs):
-		"""Wrapper completo de arun: STT entrada + fallback + TTS salida."""
+		"""Wrapper completo de arun: dedup + STT entrada + fallback + TTS salida."""
 		# 0. Validar mensajes vacios (F7 — 7.3)
 		audio_list = kwargs.get("audio", None) or []
 		image_list = kwargs.get("images", None) or []
 		message_text = input if isinstance(input, str) else ""
+
+		# 0.1 Deduplicacion anti ghost messages (WhatsApp re-entrega)
+		user_id = kwargs.get("user_id", "")
+		if user_id and _is_duplicate_message(user_id, message_text, bool(audio_list), bool(image_list)):
+			return None
 
 		if not message_text or not message_text.strip():
 			if audio_list:
@@ -250,6 +285,22 @@ if _needs_stt or _needs_tts or fallback_model:
 	if fallback_model:
 		features.append(f"Fallback:{fallback_model.id}")
 	logger.info(f"Agent wrapper activado: [{', '.join(features)}]")
+else:
+	# Sin STT/TTS/Fallback, pero aun necesitamos deduplicacion
+	_original_arun_dedup = main_agent.arun
+
+	async def _arun_dedup_only(input="", **kwargs):
+		"""Wrapper minimo: solo deduplicacion anti ghost messages."""
+		user_id = kwargs.get("user_id", "")
+		message_text = input if isinstance(input, str) else ""
+		audio_list = kwargs.get("audio", None) or []
+		image_list = kwargs.get("images", None) or []
+		if user_id and _is_duplicate_message(user_id, message_text, bool(audio_list), bool(image_list)):
+			return None
+		return await _original_arun_dedup(input, **kwargs)
+
+	main_agent.arun = _arun_dedup_only
+	logger.info("Agent wrapper activado: [Dedup]")
 
 # Referencia para QR bridge: DESPUES del wrapper para que audio/images pasen por STT
 _qr_agent_arun = main_agent.arun
