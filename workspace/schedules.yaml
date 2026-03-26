@@ -6,3 +6,11 @@ schedules:
   timezone: America/Guayaquil
   message: Genera un resumen breve de noticias de tecnologia.
   user_id: scheduler-admin
+
+- name: Recordatorio OpenAgno
+  enabled: true
+  agent_id: agnobot-main
+  cron: 45 23 * * *
+  timezone: America/Guayaquil
+  message: "⏰ Recordatorio: Es momento de realizar los cambios pendientes en el Proyecto OpenAgno. Revisa el análisis de código y aplica las mejoras necesarias."
+  user_id: scheduler-admin
