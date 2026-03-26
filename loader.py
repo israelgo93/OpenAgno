@@ -355,6 +355,17 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 				from tools.scheduler_tools import SchedulerTools
 				tools.append(SchedulerTools())
 				logger.info("SchedulerTools activado — gestion de crons via API REST")
+			case "audio":
+				from tools.audio_tools import AudioTools
+				audio_cfg = _resolve_config(config)
+				tools.append(AudioTools(
+					stt_model=audio_cfg.get("stt_model", "whisper-1"),
+					tts_model=audio_cfg.get("tts_model", "tts-1"),
+					tts_voice=audio_cfg.get("tts_voice", "nova"),
+					tts_enabled=audio_cfg.get("tts_enabled", False),
+					auto_transcribe=audio_cfg.get("auto_transcribe", True),
+				))
+				logger.info(f"AudioTools activado — STT: {audio_cfg.get('stt_model', 'whisper-1')}, TTS: {'ON' if audio_cfg.get('tts_enabled') else 'OFF'}")
 			case _:
 				logger.warning(f"Tool opcional desconocido: {name}")
 
@@ -404,6 +415,26 @@ def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
 				logger.warning(f"MCP '{name}' fallo al inicializar: {e}")
 
 	return mcp_tools
+
+
+# Proveedores que NO soportan audio nativo (necesitan transcripcion via Whisper/GPT-4o-mini)
+# Gemini Flash y OpenAI GPT-4o+ son multimodal nativos y no necesitan esto.
+NON_AUDIO_PROVIDERS = {"aws_bedrock", "aws_bedrock_claude", "anthropic"}
+
+# Patrones de error que indican rate-limit/quota excedida
+RATE_LIMIT_PATTERNS = [
+	"rate_limit", "rate limit", "quota", "throttl",
+	"429", "too many requests", "capacity", "overloaded",
+	"resourceexhausted", "throttlingexception", "toomanyrequestsexception",
+	"serviceunavailableexception",
+]
+
+
+def is_rate_limit_error(error: Exception) -> bool:
+	"""Detecta si un error es por rate-limit/quota."""
+	msg = str(error).lower()
+	error_type = type(error).__name__.lower()
+	return any(p in msg or p in error_type for p in RATE_LIMIT_PATTERNS)
 
 
 def _build_single_model(provider: str, model_id: str, aws_region: str) -> Any:
@@ -706,6 +737,32 @@ def load_workspace() -> dict[str, Any]:
 	model_config = config.get("model", {})
 	model = build_model(model_config)
 	fallback_model = build_fallback_model(model_config)
+
+	# Auto-cargar AudioTools si el modelo no soporta audio nativo
+	# y hay configuracion de audio habilitada
+	audio_config = config.get("audio", {})
+	model_provider = model_config.get("provider", "google")
+	_has_audio_tool = any(
+		getattr(t, "name", "") == "audio_tools" for t in tools
+	)
+	if not _has_audio_tool and (
+		audio_config.get("auto_transcribe", False)
+		or audio_config.get("tts_enabled", False)
+	):
+		from tools.audio_tools import AudioTools
+		tools.append(AudioTools(
+			stt_model=audio_config.get("stt_model", "whisper-1"),
+			tts_model=audio_config.get("tts_model", "tts-1"),
+			tts_voice=audio_config.get("tts_voice", "nova"),
+			tts_enabled=audio_config.get("tts_enabled", False),
+			auto_transcribe=audio_config.get("auto_transcribe", True),
+		))
+		logger.info(
+			f"AudioTools auto-cargado para proveedor '{model_provider}' "
+			f"(STT: {audio_config.get('stt_model', 'whisper-1')}, "
+			f"TTS: {'ON' if audio_config.get('tts_enabled') else 'OFF'})"
+		)
+
 	mem_config = config.get("memory", {})
 	agent_config = config.get("agent", {})
 

@@ -7,7 +7,7 @@
     <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://docs.agno.com"><img src="https://img.shields.io/badge/Agno-Framework-6366F1?style=flat-square" alt="Agno"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License"></a>
-    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/Fase-6_Autonomia-green?style=flat-square" alt="Status"></a>
+    <a href="https://github.com/israelgo93/OpenAgno"><img src="https://img.shields.io/badge/v0.7.0-Audio_Pipeline-green?style=flat-square" alt="Status"></a>
   </p>
 </p>
 
@@ -27,6 +27,8 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 - **Memoria persistente** — MemoryManager + PostgresDb para memoria agentic entre sesiones
 - **RAG hibrido** — Busqueda semantica + keyword con PgVector
 - **Multi-modelo** — Gemini, Claude, GPT, **AWS Bedrock** (Claude + Nova + Mistral)
+- **Audio Pipeline** — STT (Whisper/GPT-4o-mini) + TTS (GPT-4o-mini-tts) automatico para modelos sin audio nativo
+- **Fallback inteligente** — Ante rate-limit 429, cambia automaticamente a modelo de respaldo y reintenta
 - **Autonomia del agente** — WorkspaceTools + SchedulerTools: el agente se auto-configura
 - **Daemon con hot-reload** — `service_manager.py` supervisa el gateway y reinicia sin matar sesiones
 - **Background Hooks** — Hooks post-run no bloquean la respuesta
@@ -40,7 +42,7 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 
 ---
 
-## Arquitectura (F6)
+## Arquitectura (v0.7)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -52,16 +54,18 @@ Construido sobre [Agno Framework](https://docs.agno.com) y **AgentOS**, OpenAgno
 │             │                                             │
 │  ┌──────────▼────────────────────────────────────────┐   │
 │  │  gateway.py (AgentOS) :8000                        │   │
-│  │  ├── scheduler=True (API REST nativa)             │   │
-│  │  ├── run_hooks_in_background=True                 │   │
+│  │  ├── _arun_wrapped (wrapper inteligente)          │   │
+│  │  │   ├── STT: audio → texto (Whisper/GPT-4o)     │   │
+│  │  │   ├── Fallback: 429 → swap modelo + retry     │   │
+│  │  │   └── TTS: texto → audio (GPT-4o-mini-tts)    │   │
 │  │  ├── Agente Principal                             │   │
 │  │  │   ├── Modelo: Bedrock Claude / Gemini / GPT    │   │
+│  │  │   ├── AudioTools (STT + TTS)                   │   │
 │  │  │   ├── WorkspaceTools (CRUD workspace + reload) │   │
 │  │  │   ├── SchedulerTools (via REST API nativa)     │   │
-│  │  │   ├── ShellTools (sandboxed)                   │   │
 │  │  │   └── MCP (docs.agno.com + custom)             │   │
 │  │  ├── POST /admin/reload (senal al daemon)         │   │
-│  │  ├── GET  /admin/health (status completo)         │   │
+│  │  ├── GET  /admin/health (status + fallback info)  │   │
 │  │  └── POST /schedules (API nativa AgentOS)         │   │
 │  └───────────────────────────────────────────────────┘   │
 │                                                           │
@@ -316,6 +320,74 @@ El agente puede auto-configurarse en tiempo real gracias a dos toolkits:
 - **trigger_schedule** — Ejecutar manualmente
 
 Los schedules se crean via API REST nativa de AgentOS (no necesitan reload).
+
+---
+
+## Audio Pipeline (v0.7)
+
+OpenAgno soporta audio bidireccional automatico para modelos que no procesan audio nativo (Bedrock Claude, Anthropic, Nova). Se configura en `workspace/config.yaml`:
+
+```yaml
+audio:
+  auto_transcribe: true           # STT: transcribir audio entrante
+  stt_model: gpt-4o-mini-transcribe  # o whisper-1
+  tts_enabled: true               # TTS: generar audio de respuesta
+  tts_model: gpt-4o-mini-tts      # modelo TTS
+  tts_voice: onyx                 # alloy, echo, fable, onyx, nova, shimmer
+```
+
+### Flujo completo (WhatsApp)
+
+```
+Usuario envia audio → WhatsApp descarga bytes
+  → STT (gpt-4o-mini-transcribe) → texto transcrito
+  → Claude Bedrock procesa texto → respuesta
+  → TTS (gpt-4o-mini-tts) → audio bytes
+  → WhatsApp envia audio al usuario
+```
+
+### Como funciona
+
+- **STT**: El wrapper `_arun_wrapped` intercepta `audio=` en la llamada `arun()`, transcribe con OpenAI, y pasa texto al modelo
+- **TTS**: Despues del `arun()`, `_attach_tts_to_response()` genera audio y lo adjunta como `response.response_audio`
+- WhatsApp detecta `response_audio` y lo envia automaticamente
+- Solo se activa para proveedores en `NON_AUDIO_PROVIDERS`: `aws_bedrock`, `aws_bedrock_claude`, `anthropic`
+- Modelos nativamente multimodal (Gemini, GPT-4o) no necesitan este pipeline
+
+### Proveedores y soporte de audio
+
+| Proveedor | Audio nativo | STT automatico | TTS automatico |
+|-----------|-------------|----------------|----------------|
+| Google Gemini | Si | No necesita | No necesita |
+| OpenAI GPT-4o+ | Si | No necesita | No necesita |
+| AWS Bedrock Claude | No | Si | Si |
+| AWS Bedrock Nova | No | Si | Si |
+| Anthropic directo | No | Si | Si |
+
+---
+
+## Fallback Inteligente (v0.7)
+
+El sistema de fallback cambia automaticamente de modelo cuando el principal falla por rate-limit (429) o quota excedida.
+
+```yaml
+model:
+  provider: aws_bedrock_claude
+  id: us.anthropic.claude-sonnet-4-6
+  fallback:
+    provider: google
+    id: gemini-2.0-flash
+```
+
+### Comportamiento
+
+1. Claude Bedrock recibe peticion → error 429 "Too many tokens per day"
+2. `_arun_wrapped` detecta rate-limit → `_swap_to_fallback()`
+3. Reintenta automaticamente con Gemini Flash
+4. Cooldown de 60s (configurable via `FALLBACK_COOLDOWN_SECONDS`)
+5. Tras el cooldown, restaura Claude como modelo primario
+
+El fallback se ejecuta **dentro del wrapper `arun`**, no en middleware HTTP — funciona correctamente con WhatsApp (que procesa en background tasks).
 
 ---
 
@@ -582,7 +654,8 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **F3: Multi-Canal + Teams** | Sub-agentes YAML + Teams + Slack + Knowledge endpoints | Completada |
 | **F4: Remote Agents** | Agentes distribuidos + MCP avanzado + A2A | Planificada |
 | **F5: Scheduler + Knowledge** | Cron AgentOS, auto-ingesta, Tavily MCP/tool, validador extendido | Completada |
-| **F6: Autonomia** | Daemon, Bedrock, WorkspaceTools, SchedulerTools, SSL/Dominio | **Completada** |
+| **F6: Autonomia** | Daemon, Bedrock, WorkspaceTools, SchedulerTools, SSL/Dominio | Completada |
+| **v0.7: Audio + Fallback** | AudioTools (STT+TTS), fallback inteligente ante 429, audio WhatsApp | **Completada** |
 
 ### Fase 6 (completada)
 
@@ -634,6 +707,9 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **Deploy systemd** | Unit file para produccion con restart automatico |
 | **Dominio + SSL** | Guia para dominio personalizado con Caddy y Let's Encrypt |
 | **Modelo Fallback** | Configura un modelo de respaldo activable manual o via API |
+| **Audio Pipeline** | STT (Whisper/GPT-4o-mini) + TTS automatico para modelos sin audio nativo |
+| **Fallback inteligente** | Ante rate-limit 429, swap + retry automatico dentro de arun |
+| **AudioTools** | Toolkit con `transcribe_audio()`, `text_to_speech()`, `generate_tts_bytes()` |
 
 ---
 
@@ -657,13 +733,14 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 
 ```
 OpenAgno/
-  gateway.py                 # Gateway F6: lifespan, scheduler, hooks, admin endpoints
-  loader.py                  # Motor de carga + Bedrock + WorkspaceTools + SchedulerTools
+  gateway.py                 # Gateway v0.7: arun wrapper (STT+TTS+fallback), admin endpoints
+  loader.py                  # Motor de carga + Bedrock + AudioTools + NON_AUDIO_PROVIDERS
   service_manager.py         # Daemon supervisor con monitor y hot-reload
   tools/
     __init__.py
     workspace_tools.py       # WorkspaceTools — auto-configuracion del agente
     scheduler_tools.py       # SchedulerTools — crons via API REST nativa
+    audio_tools.py           # AudioTools — STT (Whisper) + TTS (OpenAI)
   workspace/
     config.yaml              # Configuracion central (incluye Bedrock)
     instructions.md          # Personalidad + auto-configuracion

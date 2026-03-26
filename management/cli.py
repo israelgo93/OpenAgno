@@ -1,11 +1,12 @@
 """
-CLI de Onboarding v4 - Genera, diagnostica y reconfigura el workspace.
+CLI de Onboarding v5 - Genera, diagnostica y reconfigura el workspace.
 
 Comandos:
 	python -m management.cli              # Setup wizard (genera workspace + .env)
 	python -m management.cli doctor       # Diagnostica y repara problemas
 	python -m management.cli configure    # Reconfigura una seccion especifica
 	python -m management.cli fallback     # Configura modelo fallback
+	python -m management.cli audio        # Configura audio (STT/TTS)
 
 Genera:
 	workspace/config.yaml
@@ -116,6 +117,45 @@ def run_onboarding() -> None:
 		aws_vars["AWS_REGION"] = _prompt("AWS Region", "us-east-1")
 	else:
 		api_key = _prompt(f"-> {key_name}")
+
+	# -- PASO 2b: Audio / Transcripcion --
+	audio_config: dict[str, object] = {
+		"auto_transcribe": False,
+		"stt_model": "whisper-1",
+		"tts_enabled": False,
+		"tts_model": "tts-1",
+		"tts_voice": "nova",
+	}
+	non_audio_providers = {"aws_bedrock", "aws_bedrock_claude", "anthropic"}
+
+	if provider in non_audio_providers:
+		print(f"\nPASO 2b: Configuracion de Audio")
+		print(f"  El modelo {model_id} no soporta audio nativo.")
+		auto_transcribe = _prompt_yn(
+			"Activar transcripcion automatica de audios (Whisper)?", default=True
+		)
+		audio_config["auto_transcribe"] = auto_transcribe
+		if auto_transcribe:
+			stt_choice = _prompt_choice("Modelo de transcripcion", {
+				"1": "Whisper (whisper-1 - rapido, economico)",
+				"2": "GPT-4o Mini Transcribe (mas preciso)",
+			})
+			audio_config["stt_model"] = (
+				"whisper-1" if stt_choice == "1" else "gpt-4o-mini-transcribe"
+			)
+
+	tts_enabled = _prompt_yn("Activar respuestas por voz (TTS)?")
+	audio_config["tts_enabled"] = tts_enabled
+	if tts_enabled:
+		voice_choice = _prompt_choice("Voz para TTS", {
+			"1": "Nova (femenina, natural)",
+			"2": "Alloy (neutral)",
+			"3": "Echo (masculina)",
+			"4": "Onyx (masculina, profunda)",
+		})
+		audio_config["tts_voice"] = {
+			"1": "nova", "2": "alloy", "3": "echo", "4": "onyx"
+		}.get(voice_choice, "nova")
 
 	# -- PASO 3: Base de datos --
 	db_options = {
@@ -255,6 +295,7 @@ def run_onboarding() -> None:
 			"auto_ingest_urls": auto_ingest_urls,
 			"skip_if_exists": True,
 		},
+		"audio": audio_config,
 	}
 	_write_yaml(workspace_dir / "config.yaml", config)
 
@@ -305,6 +346,12 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 			{"name": "shell", "enabled": False},
 			{"name": "workspace", "enabled": True, "description": "Auto-configuracion del workspace (CRUD agentes, instrucciones, tools)"},
 			{"name": "scheduler_mgmt", "enabled": True, "description": "Gestion de recordatorios y crons via API REST nativa"},
+			{
+				"name": "audio",
+				"enabled": audio_config.get("auto_transcribe", False) or audio_config.get("tts_enabled", False),
+				"description": "Transcripcion de audio (STT) y sintesis de voz (TTS)",
+				"config": audio_config,
+			},
 		],
 		"custom": [],
 	}
@@ -720,7 +767,7 @@ def run_fallback() -> None:
 		print(f"  Fallback actual: {fb.get('provider', provider)} / {fb['id']}")
 
 	choice = _prompt_choice("Selecciona modelo fallback", {
-		"1": "Gemini 2.0 Flash (Google - gratis, rapido)",
+		"1": "Gemini Flash Latest (Google - gratis, rapido)",
 		"2": "Claude Sonnet 4.6 via Bedrock (AWS)",
 		"3": "Claude Haiku 4.5 via Bedrock (AWS - economico)",
 		"4": "GPT-4.1 (OpenAI)",
@@ -730,7 +777,7 @@ def run_fallback() -> None:
 	})
 
 	fallback_map: dict[str, tuple[str, str, str]] = {
-		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
+		"1": ("google", "gemini-flash-latest", "GOOGLE_API_KEY"),
 		"2": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
 		"3": ("aws_bedrock_claude", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "AWS_ACCESS_KEY_ID"),
 		"4": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
@@ -806,6 +853,7 @@ def run_configure() -> None:
 		"5": "API Keys (.env)",
 		"6": "Herramientas",
 		"7": "Identidad del agente",
+		"8": "Audio (transcripcion/TTS)",
 	})
 
 	match choice:
@@ -824,6 +872,8 @@ def run_configure() -> None:
 			_configure_tools(config)
 		case "7":
 			_configure_identity(config)
+		case "8":
+			_configure_audio(config)
 
 	print()
 
@@ -1011,6 +1061,75 @@ def _configure_identity(config: dict) -> None:
 	print(f"\n  [OK] Identidad actualizada: {new_name}")
 
 
+def _configure_audio(config: dict) -> None:
+	"""Reconfigura audio (transcripcion STT / sintesis TTS)."""
+	audio = config.get("audio", {})
+	print(f"\n  Configuracion de audio actual:")
+	print(f"    Auto-transcripcion: {'ON' if audio.get('auto_transcribe') else 'OFF'}")
+	print(f"    Modelo STT: {audio.get('stt_model', 'whisper-1')}")
+	print(f"    TTS: {'ON' if audio.get('tts_enabled') else 'OFF'}")
+	if audio.get("tts_enabled"):
+		print(f"    Voz TTS: {audio.get('tts_voice', 'nova')}")
+
+	# Transcripcion
+	auto_transcribe = _prompt_yn(
+		"Activar transcripcion automatica de audios?",
+		default=audio.get("auto_transcribe", False),
+	)
+	audio["auto_transcribe"] = auto_transcribe
+	if auto_transcribe:
+		stt_choice = _prompt_choice("Modelo de transcripcion", {
+			"1": "Whisper (whisper-1 - rapido, economico)",
+			"2": "GPT-4o Mini Transcribe (mas preciso)",
+		}, default="1" if audio.get("stt_model", "whisper-1") == "whisper-1" else "2")
+		audio["stt_model"] = (
+			"whisper-1" if stt_choice == "1" else "gpt-4o-mini-transcribe"
+		)
+
+	# TTS
+	tts_enabled = _prompt_yn(
+		"Activar respuestas por voz (TTS)?",
+		default=audio.get("tts_enabled", False),
+	)
+	audio["tts_enabled"] = tts_enabled
+	if tts_enabled:
+		voice_choice = _prompt_choice("Voz para TTS", {
+			"1": "Nova (femenina, natural)",
+			"2": "Alloy (neutral)",
+			"3": "Echo (masculina)",
+			"4": "Onyx (masculina, profunda)",
+		})
+		audio["tts_voice"] = {
+			"1": "nova", "2": "alloy", "3": "echo", "4": "onyx"
+		}.get(voice_choice, "nova")
+		audio["tts_model"] = "tts-1"
+
+	config["audio"] = audio
+	_write_yaml(Path("workspace/config.yaml"), config)
+
+	# Actualizar tools.yaml para habilitar/deshabilitar audio tool
+	tools_path = Path("workspace/tools.yaml")
+	if tools_path.exists():
+		tools = yaml.safe_load(tools_path.read_text(encoding="utf-8")) or {}
+		optional = tools.get("optional", [])
+		audio_tool = next((t for t in optional if t.get("name") == "audio"), None)
+		audio_enabled = auto_transcribe or tts_enabled
+		if audio_tool:
+			audio_tool["enabled"] = audio_enabled
+			audio_tool["config"] = audio
+		else:
+			optional.append({
+				"name": "audio",
+				"enabled": audio_enabled,
+				"description": "Transcripcion de audio (STT) y sintesis de voz (TTS)",
+				"config": audio,
+			})
+		_write_yaml(tools_path, tools)
+
+	print(f"\n  [OK] Audio actualizado: STT={'ON' if auto_transcribe else 'OFF'}, TTS={'ON' if tts_enabled else 'OFF'}")
+	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
+
+
 # ==============================
 # MAIN - Router de comandos
 # ==============================
@@ -1032,6 +1151,12 @@ def main() -> None:
 			run_fallback()
 		case "configure" | "config" | "reconfig":
 			run_configure()
+		case "audio":
+			config = _load_current_config()
+			if config:
+				_configure_audio(config)
+			else:
+				print("  No hay workspace configurado. Ejecuta: python -m management.cli")
 		case "help":
 			print()
 			print("  OpenAgno CLI - Comandos disponibles:")
@@ -1040,6 +1165,7 @@ def main() -> None:
 			print("  python -m management.cli doctor       Diagnostica y repara problemas")
 			print("  python -m management.cli configure    Reconfigura una seccion")
 			print("  python -m management.cli fallback     Configura modelo fallback")
+			print("  python -m management.cli audio        Configura audio (STT/TTS)")
 			print("  python -m management.cli help         Muestra esta ayuda")
 			print()
 		case _:

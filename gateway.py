@@ -6,6 +6,7 @@ Fase 6: Autonomia operativa, Bedrock, Background Hooks, Daemon, Scheduler nativo
 """
 import inspect
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from agno.tools.crawl4ai import Crawl4aiTools
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils.log import logger
 
-from loader import load_workspace
+from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS
 from management.validator import print_validation, validate_workspace, workspace_warnings
 
 validation_errors = validate_workspace()
@@ -46,24 +47,183 @@ knowledge_urls = ws["knowledge_urls"]
 if fallback_model:
 	_original_model = main_agent.model
 	_using_fallback = False
+	_fallback_until: float = 0.0
+	FALLBACK_COOLDOWN = int(os.getenv("FALLBACK_COOLDOWN_SECONDS", "60"))
 
 	def _swap_to_fallback() -> None:
-		"""Cambia el agente principal al modelo fallback."""
-		global _using_fallback
+		"""Cambia el agente principal al modelo fallback (manual o automatico)."""
+		global _using_fallback, _fallback_until
 		if not _using_fallback and fallback_model:
 			main_agent.model = fallback_model
 			_using_fallback = True
-			logger.warning(f"FALLBACK activado: {fallback_model.id}")
+			_fallback_until = time.time() + FALLBACK_COOLDOWN
+			logger.warning(
+				f"FALLBACK activado: {fallback_model.id} "
+				f"(cooldown {FALLBACK_COOLDOWN}s)"
+			)
 
 	def _swap_to_primary() -> None:
 		"""Restaura el modelo principal."""
-		global _using_fallback
+		global _using_fallback, _fallback_until
 		if _using_fallback:
 			main_agent.model = _original_model
 			_using_fallback = False
+			_fallback_until = 0.0
 			logger.info(f"Modelo principal restaurado: {_original_model.id}")
 
-	logger.info(f"Fallback disponible: {fallback_model.id}")
+	def _maybe_restore_primary() -> None:
+		"""Restaura el modelo primario si paso el cooldown."""
+		if _using_fallback and time.time() > _fallback_until:
+			_swap_to_primary()
+
+	def _on_rate_limit_error(error: Exception) -> None:
+		"""Callback para activar fallback automaticamente ante rate-limit."""
+		if is_rate_limit_error(error):
+			logger.warning(f"Rate-limit detectado: {error}")
+			_swap_to_fallback()
+
+	logger.info(
+		f"Fallback disponible: {fallback_model.id} "
+		f"(cooldown: {FALLBACK_COOLDOWN}s, auto-deteccion: ON)"
+	)
+
+
+# === Wrapper inteligente de arun: STT + TTS + Fallback automatico ===
+audio_config = config.get("audio", {})
+model_provider = config.get("model", {}).get("provider", "google")
+_needs_stt = audio_config.get("auto_transcribe", False) and model_provider in NON_AUDIO_PROVIDERS
+_needs_tts = audio_config.get("tts_enabled", False) and model_provider in NON_AUDIO_PROVIDERS
+
+if _needs_stt or _needs_tts or fallback_model:
+	import tempfile
+	from agno.media import Audio as AgnoAudio
+	from tools.audio_tools import AudioTools
+
+	_audio_tools: AudioTools | None = None
+	if _needs_stt or _needs_tts:
+		_audio_tools = AudioTools(
+			stt_model=audio_config.get("stt_model", "whisper-1"),
+			tts_model=audio_config.get("tts_model", "gpt-4o-mini-tts"),
+			tts_voice=audio_config.get("tts_voice", "nova"),
+			tts_enabled=_needs_tts,
+			auto_transcribe=_needs_stt,
+		)
+
+	_original_arun = main_agent.arun
+
+	def _transcribe_audio_objects(audio_list: list) -> str:
+		"""Transcribe una lista de objetos Audio y retorna el texto combinado."""
+		if not _audio_tools:
+			return "[Audio no procesable: AudioTools no configurado]"
+		transcriptions: list[str] = []
+		for audio_obj in audio_list:
+			try:
+				suffix = ".ogg"
+				if hasattr(audio_obj, "mime_type") and audio_obj.mime_type:
+					mime_to_ext = {
+						"audio/ogg": ".ogg", "audio/mpeg": ".mp3",
+						"audio/mp4": ".m4a", "audio/wav": ".wav",
+						"audio/amr": ".amr", "audio/aac": ".aac",
+					}
+					suffix = mime_to_ext.get(audio_obj.mime_type, ".ogg")
+
+				content = getattr(audio_obj, "content", None)
+				filepath = getattr(audio_obj, "filepath", None)
+
+				if content:
+					tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+					tmp.write(content)
+					tmp.close()
+					text = _audio_tools.transcribe_audio(tmp.name)
+					os.unlink(tmp.name)
+				elif filepath:
+					text = _audio_tools.transcribe_audio(str(filepath))
+				else:
+					text = "[Audio recibido pero no se pudo procesar]"
+
+				if text and not text.startswith("Error"):
+					transcriptions.append(text)
+					logger.info(f"STT transcrito: {len(text)} chars")
+				else:
+					transcriptions.append("[No se pudo transcribir el audio]")
+			except Exception as e:
+				logger.error(f"Error transcribiendo audio: {e}")
+				transcriptions.append(f"[Error al transcribir audio: {e}]")
+		return "\n".join(transcriptions)
+
+	def _attach_tts_to_response(response):
+		"""Genera TTS del texto de respuesta y lo adjunta como response_audio."""
+		if not _audio_tools or not _needs_tts:
+			return response
+		try:
+			text = getattr(response, "content", None)
+			if not text or not isinstance(text, str) or len(text.strip()) < 5:
+				return response
+
+			# Limitar texto TTS a 4000 chars para evitar timeout
+			tts_text = text[:4000]
+			audio_bytes, mime = _audio_tools.generate_tts_bytes(tts_text)
+			if audio_bytes:
+				response.response_audio = AgnoAudio(
+					content=audio_bytes,
+					mime_type=mime,
+					format="mp3",
+				)
+				logger.info(f"TTS adjuntado a respuesta: {len(audio_bytes)} bytes")
+		except Exception as e:
+			logger.error(f"Error adjuntando TTS a respuesta: {e}")
+		return response
+
+	async def _arun_wrapped(input="", **kwargs):
+		"""Wrapper completo de arun: STT entrada + fallback + TTS salida."""
+		# 1. STT: transcribir audio si el modelo no soporta audio nativo
+		if _needs_stt:
+			audio_list = kwargs.pop("audio", None) or []
+			if audio_list:
+				transcription = _transcribe_audio_objects(audio_list)
+				prefix = "[Transcripcion de audio del usuario]:\n"
+				if isinstance(input, str):
+					input = prefix + transcription + ("\n\n" + input if input else "")
+				else:
+					input = prefix + transcription
+				logger.info(f"Audio reemplazado por transcripcion para {model_provider}")
+
+		# 2. Restaurar modelo primario si paso el cooldown
+		if fallback_model:
+			_maybe_restore_primary()
+
+		# 3. Ejecutar con retry/fallback ante rate-limit
+		try:
+			response = await _original_arun(input, **kwargs)
+		except Exception as exc:
+			if fallback_model and is_rate_limit_error(exc):
+				logger.warning(f"Rate-limit en modelo primario: {exc}")
+				_swap_to_fallback()
+				# Reintentar con modelo fallback
+				try:
+					response = await _original_arun(input, **kwargs)
+				except Exception as exc2:
+					logger.error(f"Tambien fallo el fallback: {exc2}")
+					raise
+			else:
+				raise
+
+		# 4. TTS: generar audio de la respuesta para enviar por WhatsApp
+		if _needs_tts and response:
+			response = _attach_tts_to_response(response)
+
+		return response
+
+	main_agent.arun = _arun_wrapped
+
+	features = []
+	if _needs_stt:
+		features.append(f"STT:{audio_config.get('stt_model', 'whisper-1')}")
+	if _needs_tts:
+		features.append(f"TTS:{audio_config.get('tts_model', 'gpt-4o-mini-tts')}/{audio_config.get('tts_voice', 'nova')}")
+	if fallback_model:
+		features.append(f"Fallback:{fallback_model.id}")
+	logger.info(f"Agent wrapper activado: [{', '.join(features)}]")
 
 
 async def _auto_ingest_knowledge() -> None:
@@ -122,6 +282,7 @@ base_app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
 
 
 @base_app.get("/")
@@ -246,15 +407,21 @@ async def admin_reload():
 async def admin_health():
 	model_info = {**config.get("model", {})}
 	if fallback_model:
-		model_info["fallback_active"] = _using_fallback if "_using_fallback" in dir() else False
+		model_info["fallback_active"] = _using_fallback
 		model_info["fallback_id"] = fallback_model.id
+		model_info["fallback_cooldown_seconds"] = FALLBACK_COOLDOWN
+		if _using_fallback:
+			remaining = max(0, int(_fallback_until - time.time()))
+			model_info["fallback_restore_in_seconds"] = remaining
+	audio_info = config.get("audio", {})
 	return {
 		"status": "healthy",
-		"version": "0.6.1",
+		"version": "0.7.0",
 		"agents": [a.id for a in all_agents],
 		"teams": [t.id for t in teams] if teams else [],
 		"channels": config.get("channels", []),
 		"model": model_info,
+		"audio": audio_info if audio_info else None,
 		"scheduler": scheduler_cfg.get("enabled", False),
 	}
 

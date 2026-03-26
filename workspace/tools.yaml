@@ -30,4 +30,13 @@ optional:
 - name: scheduler_mgmt
   enabled: true
   description: Gestion de recordatorios y crons via API REST nativa
+- name: audio
+  enabled: true
+  description: Transcripcion de audio (STT) y sintesis de voz (TTS)
+  config:
+    auto_transcribe: true
+    stt_model: gpt-4o-mini-transcribe
+    tts_enabled: false
+    tts_model: gpt-4o-mini-tts
+    tts_voice: onyx
 custom: []
