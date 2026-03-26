@@ -485,6 +485,7 @@ class WhatsAppDedupMiddleware(BaseHTTPMiddleware):
 				data = _json.loads(body)
 				if data.get("object") == "whatsapp_business_account":
 					now = time.time()
+
 					# Limpiar IDs expirados
 					expired = [k for k, ts in _wa_seen_msg_ids.items() if now - ts > _WA_DEDUP_TTL]
 					for k in expired:
@@ -499,7 +500,7 @@ class WhatsAppDedupMiddleware(BaseHTTPMiddleware):
 								has_messages = True
 								msg_id = msg.get("id", "")
 								if msg_id and msg_id in _wa_seen_msg_ids:
-									logger.warning(f"Webhook duplicado ignorado: msg_id={msg_id}")
+									logger.warning(f"Webhook duplicado ignorado: {msg_id[:20]}")
 								else:
 									all_duplicate = False
 									if msg_id:
