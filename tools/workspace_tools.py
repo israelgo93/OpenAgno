@@ -91,7 +91,7 @@ class WorkspaceTools(Toolkit):
     def create_sub_agent(
         self, name: str, agent_id: str, role: str,
         tools: list[str], instructions: list[str],
-        model_provider: str = "google", model_id: str = "gemini-2.0-flash",
+        model_provider: str = "google", model_id: str = "gemini-2.5-flash",
     ) -> str:
         """Crea un sub-agente en workspace/agents/.
 

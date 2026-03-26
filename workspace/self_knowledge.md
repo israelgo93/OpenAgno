@@ -2,15 +2,16 @@
 
 ## Proveedores de Modelo Válidos
 
-| Provider (config.yaml) | Import Agno | Ejemplo de ID |
-|------------------------|-------------|---------------|
-| `google` | `agno.models.google.Gemini` | `gemini-2.0-flash` |
-| `openai` | `agno.models.openai.OpenAIChat` | `gpt-4.1` |
-| `anthropic` | `agno.models.anthropic.Claude` | `claude-sonnet-4-20250514` |
-| `aws_bedrock_claude` | `agno.models.aws.Claude` | `us.anthropic.claude-sonnet-4-6` |
+| Provider (config.yaml) | Import Agno | Modelos recomendados (marzo 2026) |
+|------------------------|-------------|----------------------------------|
+| `google` | `agno.models.google.Gemini` | `gemini-2.5-flash` (default), `gemini-2.5-pro`, `gemini-3-flash-preview` |
+| `openai` | `agno.models.openai.OpenAIChat` | `gpt-4o`, `gpt-4o-mini`, `o1`, `o1-mini` |
+| `anthropic` | `agno.models.anthropic.Claude` | `claude-sonnet-4-6`, `claude-haiku-3-5` |
+| `aws_bedrock_claude` | `agno.models.aws.Claude` | `us.anthropic.claude-sonnet-4-6-v1:0` |
 | `aws_bedrock` | `agno.models.aws.AwsBedrock` | `amazon.nova-pro-v1:0` |
 
 **NUNCA usar**: `bedrock`, `aws`, `claude`, `gemini` como provider.
+**NOTA**: `gemini-2.0-flash` sera retirado el 1 de junio de 2026. Usar `gemini-2.5-flash`.
 
 ## Tools Disponibles en el Loader
 
@@ -26,6 +27,12 @@
 | `workspace` | `WorkspaceTools` | Nada |
 | `scheduler_mgmt` | `SchedulerTools` | `GATEWAY_URL` |
 | `audio` | `AudioTools` | `OPENAI_API_KEY` |
+| `yfinance` | `YFinanceTools` | `yfinance` pip package |
+| `wikipedia` | `WikipediaTools` | `wikipedia` pip package |
+| `arxiv` | `ArxivTools` | `arxiv` pip package |
+| `calculator` | `CalculatorTools` | Nada |
+| `file_tools` | `FileTools` | Nada |
+| `python_tools` | `PythonTools` | Nada (riesgo de seguridad) |
 
 **NUNCA usar en sub-agentes**: `tavily_search`, `web_search`, `search` — no son nombres de tools válidos en el loader.
 **OJO**: `github` es válido (F7). Requiere registrar `GithubTools` en `loader.py`.
@@ -39,7 +46,7 @@ agent:
   id: "nombre-agente"  # sin espacios, lowercase
   model:
     provider: google  # DEBE ser uno de la tabla de arriba
-    id: gemini-2.0-flash
+    id: gemini-2.5-flash
   instructions:
     - "Instrucciones específicas del agente."
   tools:
@@ -60,6 +67,17 @@ execution:
 | Agno Docs | `https://docs.agno.com/mcp` | streamable-http |
 | Tavily | Requiere API key | streamable-http |
 | Supabase | Requiere `npx` + access token | stdio |
+| GitHub | Requiere `GITHUB_TOKEN` | stdio |
+
+## Canales Disponibles
+
+| Canal | Configuración |
+|-------|---------------|
+| `whatsapp` | Cloud API (Meta Business) o QR Link (Baileys bridge) o Dual |
+| `slack` | Slack Bot con scopes OAuth |
+| `telegram` | Bot via @BotFather |
+| `ai_sdk` | Vercel AI SDK (experimental) |
+| Web | Siempre disponible via os.agno.com |
 
 ## Reglas de Auto-Configuración
 

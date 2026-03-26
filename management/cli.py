@@ -89,7 +89,7 @@ def run_onboarding() -> None:
 
 	# -- PASO 2: Modelo --
 	model_options = {
-		"1": "Gemini 2.0 Flash (Google - multimodal, recomendado)",
+		"1": "Gemini 2.5 Flash (Google - multimodal, recomendado)",
 		"2": "Claude Sonnet 4 (Anthropic - directo)",
 		"3": "Claude Sonnet 4.6 via Bedrock (AWS - sin API key Anthropic)",
 		"4": "Claude Opus 4.6 via Bedrock (AWS - mas capaz)",
@@ -99,7 +99,7 @@ def run_onboarding() -> None:
 	model_choice = _prompt_choice("PASO 2: Modelo de IA", model_options)
 
 	model_map: dict[str, tuple[str, str, str]] = {
-		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
+		"1": ("google", "gemini-2.5-flash", "GOOGLE_API_KEY"),
 		"2": ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
 		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
 		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-6-v1", "AWS_ACCESS_KEY_ID"),
@@ -191,19 +191,31 @@ def run_onboarding() -> None:
 		"1": "WhatsApp",
 		"2": "Slack",
 		"3": "WhatsApp + Slack",
+		"4": "Telegram",
+		"5": "WhatsApp + Telegram",
 	}
 	channel_choice = _prompt_choice("PASO 4: Canales (Web siempre disponible)", channel_options)
 	channels: list[str] = {
 		"1": ["whatsapp"], "2": ["slack"], "3": ["whatsapp", "slack"],
+		"4": ["telegram"], "5": ["whatsapp", "telegram"],
 	}.get(channel_choice, ["whatsapp"])
 
 	whatsapp_vars: dict[str, str] = {}
+	wa_mode = "cloud_api"
 	if "whatsapp" in channels:
-		print("\n  Configuracion WhatsApp (Meta Business API):")
-		whatsapp_vars["WHATSAPP_ACCESS_TOKEN"] = _prompt("Access Token")
-		whatsapp_vars["WHATSAPP_PHONE_NUMBER_ID"] = _prompt("Phone Number ID")
-		whatsapp_vars["WHATSAPP_VERIFY_TOKEN"] = _prompt("Verify Token")
-		whatsapp_vars["WHATSAPP_WEBHOOK_URL"] = _prompt("Webhook URL")
+		wa_mode_choice = _prompt_choice("Modo de WhatsApp?", {
+			"1": "Cloud API (API oficial de Meta — requiere cuenta Business verificada)",
+			"2": "QR Link (vincular dispositivo escaneando QR — como OpenClaw)",
+			"3": "Dual (ambos modos simultaneamente)",
+		}, default="1")
+		wa_mode = {"1": "cloud_api", "2": "qr_link", "3": "dual"}.get(wa_mode_choice, "cloud_api")
+
+		if wa_mode in ("cloud_api", "dual"):
+			print("\n  Configuracion WhatsApp (Meta Business API):")
+			whatsapp_vars["WHATSAPP_ACCESS_TOKEN"] = _prompt("Access Token")
+			whatsapp_vars["WHATSAPP_PHONE_NUMBER_ID"] = _prompt("Phone Number ID")
+			whatsapp_vars["WHATSAPP_VERIFY_TOKEN"] = _prompt("Verify Token")
+			whatsapp_vars["WHATSAPP_WEBHOOK_URL"] = _prompt("Webhook URL")
 
 	slack_vars: dict[str, str] = {}
 	if "slack" in channels:
@@ -272,6 +284,7 @@ def run_onboarding() -> None:
 			"max_results": 5,
 		},
 		"channels": channels,
+		"whatsapp": {"mode": wa_mode},
 		"memory": {
 			"enable_agentic_memory": True,
 			"num_history_runs": 5,
@@ -884,7 +897,7 @@ def _configure_model(config: dict) -> None:
 	print(f"\n  Modelo actual: {model.get('provider')} / {model.get('id')}")
 
 	model_options = {
-		"1": "Gemini 2.0 Flash (Google)",
+		"1": "Gemini 2.5 Flash (Google)",
 		"2": "Claude Sonnet 4 (Anthropic directo)",
 		"3": "Claude Sonnet 4.6 via Bedrock",
 		"4": "Claude Opus 4.6 via Bedrock",
@@ -892,7 +905,7 @@ def _configure_model(config: dict) -> None:
 		"6": "Amazon Nova Pro (Bedrock)",
 	}
 	model_map: dict[str, tuple[str, str, str]] = {
-		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
+		"1": ("google", "gemini-2.5-flash", "GOOGLE_API_KEY"),
 		"2": ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
 		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
 		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-6-v1", "AWS_ACCESS_KEY_ID"),

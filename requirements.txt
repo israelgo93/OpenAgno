@@ -1,21 +1,26 @@
 # ===================================
-# AgnoBot - Dependencias (F7)
+# OpenAgno - Dependencias (v1.0.0)
 # ===================================
 
 # Agno Framework (AgentOS + scheduler cron)
-agno[os,scheduler]>=1.5.0  # F7: Incluye fixes MCPTools, Slack, Bedrock
+agno[os,scheduler]>=1.5.0
 
 # Modelos de IA
 openai>=1.30.0
 google-genai>=1.0.0
 anthropic>=0.30.0
 
-# Tools
+# Tools — builtin
 duckduckgo-search>=6.0
 ddgs>=6.0
 crawl4ai>=0.4.0
 tavily-python>=0.4.0
-PyGithub>=2.0  # F7: GithubTools builtin de Agno
+PyGithub>=2.0
+
+# Tools — opcionales (F8)
+yfinance>=0.2.0
+wikipedia>=1.4.0
+arxiv>=2.0.0
 
 # AgentOS MCP embebido (gateway con enable_mcp_server)
 fastmcp>=2.0.0
@@ -36,6 +41,9 @@ python-dotenv>=1.0.0
 fastapi>=0.110.0
 uvicorn>=0.27.0
 python-multipart>=0.0.9
+
+# HTTP client (WhatsApp QR bridge proxy)
+httpx>=0.27.0
 
 # AWS Bedrock (F6)
 boto3>=1.35

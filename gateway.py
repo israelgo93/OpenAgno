@@ -2,7 +2,7 @@
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.
 
-Fase 7: Estabilizacion, Auto-Consciencia del Agente y Seguridad.
+Fase 8: Producción, Tools Expandidos, Studio Completo y WhatsApp Dual.
 """
 import inspect
 import os
@@ -18,8 +18,6 @@ from fastapi.responses import RedirectResponse
 
 from agno.os import AgentOS
 from agno.registry import Registry
-from agno.tools.crawl4ai import Crawl4aiTools
-from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.utils.log import logger
 
 from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS
@@ -291,9 +289,61 @@ async def lifespan(app: FastAPI):
 	yield
 
 
+def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
+	"""Monta rutas para WhatsApp QR bridge (DAT-240)."""
+	import httpx
+
+	@app.get("/whatsapp-qr/status")
+	async def wa_qr_status():
+		"""Estado de la conexión QR."""
+		try:
+			async with httpx.AsyncClient() as client:
+				resp = await client.get(f"{bridge_url}/status")
+				return resp.json()
+		except Exception as e:
+			return {"status": "bridge_unreachable", "error": str(e)}
+
+	@app.get("/whatsapp-qr/code")
+	async def wa_qr_code():
+		"""Obtener QR code para escanear."""
+		try:
+			async with httpx.AsyncClient() as client:
+				resp = await client.get(f"{bridge_url}/qr")
+				return resp.json()
+		except Exception as e:
+			return {"error": str(e)}
+
+	@app.post("/whatsapp-qr/incoming")
+	async def wa_qr_incoming(request: dict):
+		"""Recibe mensajes del bridge y los procesa con el agente."""
+		from_number = request.get("from", "")
+		text = request.get("text", "")
+
+		if not text:
+			return {"status": "ignored", "reason": "empty message"}
+
+		try:
+			response = await agent.arun(
+				message=text,
+				user_id=from_number,
+				session_id=from_number,
+			)
+			# Enviar respuesta de vuelta via bridge
+			response_text = response.content if hasattr(response, 'content') else str(response)
+			async with httpx.AsyncClient() as client:
+				await client.post(f"{bridge_url}/send", json={
+					"to": from_number,
+					"text": response_text,
+				})
+			return {"status": "responded"}
+		except Exception as e:
+			logger.error(f"Error procesando mensaje QR: {e}")
+			return {"status": "error", "error": str(e)}
+
+
 base_app = FastAPI(
 	title=config.get("agentos", {}).get("name", "AgnoBot Platform"),
-	version="0.8.0",
+	version="1.0.0",
 	lifespan=lifespan,
 )
 base_app.add_middleware(
@@ -320,10 +370,22 @@ if knowledge:
 interfaces = []
 channels = config.get("channels", ["whatsapp"])
 
+# === WhatsApp modo dual (DAT-240) ===
+wa_config = config.get("whatsapp", {})
+wa_mode = wa_config.get("mode", "cloud_api")
+
 if "whatsapp" in channels:
-	from agno.os.interfaces.whatsapp import Whatsapp
-	interfaces.append(Whatsapp(agent=main_agent))
-	logger.info("Canal WhatsApp habilitado")
+	# Modo 1: Cloud API (oficial Meta) — siempre disponible
+	if wa_mode in ("cloud_api", "dual"):
+		from agno.os.interfaces.whatsapp import Whatsapp
+		interfaces.append(Whatsapp(agent=main_agent))
+		logger.info("WhatsApp Cloud API habilitado (API oficial Meta)")
+
+	# Modo 2: QR Link (via Baileys bridge)
+	if wa_mode in ("qr_link", "dual"):
+		bridge_url = wa_config.get("qr_link", {}).get("bridge_url", "http://localhost:3001")
+		_setup_whatsapp_qr_routes(base_app, main_agent, bridge_url)
+		logger.info(f"WhatsApp QR Link habilitado (bridge: {bridge_url})")
 
 if "slack" in channels:
 	from agno.os.interfaces.slack import Slack
@@ -338,6 +400,14 @@ if "telegram" in channels:
 	except ImportError:
 		logger.warning("Telegram no disponible — actualizar agno[os]")
 
+if "ai_sdk" in channels:
+	try:
+		from agno.os.interfaces.ai_sdk import AISdk
+		interfaces.append(AISdk(agent=main_agent))
+		logger.info("Canal AI SDK (Vercel) habilitado")
+	except ImportError:
+		logger.warning("AI SDK no disponible")
+
 if config.get("a2a", {}).get("enabled", False):
 	try:
 		from agno.os.interfaces.a2a import A2A
@@ -348,6 +418,7 @@ if config.get("a2a", {}).get("enabled", False):
 
 logger.info("Canal Web disponible via os.agno.com (Control Plane)")
 
+# === Studio Registry con todos los tools del workspace (DAT-238) ===
 studio_config = config.get("studio", {})
 registry = None
 if studio_config.get("enabled", True) and not ws["db_url"].startswith("sqlite"):
@@ -356,13 +427,20 @@ if studio_config.get("enabled", True) and not ws["db_url"].startswith("sqlite"):
 		if sa.model not in all_models:
 			all_models.append(sa.model)
 
+	# Recopilar TODOS los tools del workspace para Registry
+	registry_tools = []
+	for tool in main_agent.tools or []:
+		if tool not in registry_tools:
+			registry_tools.append(tool)
+
+	os_config_name = config.get("agentos", {}).get("name", "AgnoBot Registry")
 	registry = Registry(
-		name="AgnoBot Registry",
-		tools=[DuckDuckGoTools(), Crawl4aiTools()],
+		name=os_config_name,
+		tools=registry_tools,
 		models=all_models,
 		dbs=[db],
 	)
-	logger.info("Studio Registry configurado")
+	logger.info(f"Studio Registry configurado con {len(registry_tools)} tools")
 
 all_agents = [main_agent] + sub_agents
 logger.info(f"Agentes cargados: {[a.id for a in all_agents]}")
@@ -466,7 +544,7 @@ async def admin_health():
 	audio_info = config.get("audio", {})
 	return {
 		"status": "healthy",
-		"version": "0.8.0",
+		"version": "1.0.0",
 		"agents": [a.id for a in all_agents],
 		"teams": [t.id for t in teams] if teams else [],
 		"channels": config.get("channels", []),

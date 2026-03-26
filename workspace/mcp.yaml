@@ -1,12 +1,26 @@
 servers:
 - name: agno_docs
-  enabled: true
   transport: streamable-http
-  url: https://docs.agno.com/mcp
+  url: "https://docs.agno.com/mcp"
+  enabled: true
 - name: tavily
-  enabled: true
   transport: streamable-http
-  url: https://mcp.tavily.com/mcp/?tavilyApiKey=${TAVILY_API_KEY}
-  description: Busqueda web avanzada con Tavily
+  url: "https://mcp.tavily.com/mcp"
+  enabled: false
+  headers:
+    Authorization: "Bearer ${TAVILY_API_KEY}"
+- name: supabase
+  transport: stdio
+  command: "npx"
+  args: ["-y", "@supabase/mcp-server-supabase@latest", "--access-token", "${SUPABASE_ACCESS_TOKEN}"]
+  enabled: false
+- name: github
+  transport: stdio
+  command: "npx"
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+  enabled: false
+
 expose:
   enabled: true

@@ -375,6 +375,48 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 					logger.info("GithubTools activado — requiere GITHUB_TOKEN")
 				except ImportError:
 					logger.warning("GithubTools no disponible — instalar PyGithub>=2.0")
+			case "yfinance":
+				try:
+					from agno.tools.yfinance import YFinanceTools
+					tools.append(YFinanceTools(**config))
+					logger.info("YFinanceTools activado")
+				except ImportError:
+					logger.warning("YFinanceTools no disponible — instalar yfinance>=0.2.0")
+			case "wikipedia":
+				try:
+					from agno.tools.wikipedia import WikipediaTools
+					tools.append(WikipediaTools(**config))
+					logger.info("WikipediaTools activado")
+				except ImportError:
+					logger.warning("WikipediaTools no disponible — instalar wikipedia>=1.4.0")
+			case "arxiv":
+				try:
+					from agno.tools.arxiv import ArxivTools
+					tools.append(ArxivTools(**config))
+					logger.info("ArxivTools activado")
+				except ImportError:
+					logger.warning("ArxivTools no disponible — instalar arxiv>=2.0.0")
+			case "calculator":
+				try:
+					from agno.tools.calculator import CalculatorTools
+					tools.append(CalculatorTools(**config))
+					logger.info("CalculatorTools activado")
+				except ImportError:
+					logger.warning("CalculatorTools no disponible")
+			case "file_tools":
+				try:
+					from agno.tools.file import FileTools
+					tools.append(FileTools(**config))
+					logger.info("FileTools activado")
+				except ImportError:
+					logger.warning("FileTools no disponible")
+			case "python_tools":
+				try:
+					from agno.tools.python import PythonTools
+					tools.append(PythonTools(**config))
+					logger.warning("PythonTools activado — riesgo de seguridad")
+				except ImportError:
+					logger.warning("PythonTools no disponible")
 			case _:
 				logger.warning(f"Tool opcional desconocido: {name}")
 
@@ -479,7 +521,7 @@ def _build_single_model(provider: str, model_id: str, aws_region: str) -> Any:
 def build_model(model_config: dict[str, Any]) -> Any:
 	"""Construye el modelo con fallback opcional para rate limits."""
 	provider = model_config.get("provider", "google")
-	model_id = model_config.get("id", "gemini-2.0-flash")
+	model_id = model_config.get("id", "gemini-2.5-flash")
 	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
 
 	model = _build_single_model(provider, model_id, aws_region)
@@ -548,7 +590,7 @@ def build_sub_agents(
 			continue
 
 		try:
-			model_cfg = agent_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
+			model_cfg = agent_def.get("model", {"provider": "google", "id": "gemini-2.5-flash"})
 			model = build_model(model_cfg)
 
 			agent_tools: list[Union[DuckDuckGoTools, Crawl4aiTools, ReasoningTools]] = []
@@ -636,7 +678,7 @@ def build_teams(
 			)
 			continue
 
-		model_cfg = team_def.get("model", {"provider": "google", "id": "gemini-2.0-flash"})
+		model_cfg = team_def.get("model", {"provider": "google", "id": "gemini-2.5-flash"})
 		try:
 			model = build_model(model_cfg)
 		except ValueError as e:

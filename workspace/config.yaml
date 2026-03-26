@@ -1,51 +1,57 @@
 agent:
-  name: MaxAgno
+  name: AgnoBot
   id: agnobot-main
-  description: Es un orquestador de proyecto y tarea para Israel
+  description: Asistente IA multimodal con workspace declarativo
+
 model:
-  provider: aws_bedrock_claude
-  id: us.anthropic.claude-opus-4-6-v1
-  aws_region: us-east-1
-  fallback:
-    provider: aws_bedrock_claude
-    id: us.anthropic.claude-sonnet-4-6
-    aws_region: us-east-1
+  provider: google
+  id: gemini-2.5-flash
+
+fallback:
+  enabled: false
+
 database:
-  type: supabase
-  knowledge_table: agnobot_knowledge_contents
-  vector_table: agnobot_knowledge_vectors
+  type: local
+  tables:
+    sessions: agno_sessions
+    knowledge_contents: agnobot_knowledge_contents
+
 vector:
   search_type: hybrid
   embedder: text-embedding-3-small
   max_results: 5
+
 channels:
 - whatsapp
-- telegram  # F7: Canal Telegram
+
+whatsapp:
+  mode: cloud_api   # cloud_api | qr_link | dual
+  cloud_api:
+    webhook_path: /whatsapp/webhook
+  qr_link:
+    bridge_url: http://localhost:3001
+    session_dir: ./whatsapp_session
+    auto_reconnect: true
+
 memory:
   enable_agentic_memory: true
   num_history_runs: 5
-agentos:
-  id: agnobot-gateway
-  name: MaxAgno Platform
-  port: 8000
-  tracing: true
-  enable_mcp_server: true
-studio:
-  enabled: true
-a2a:
-  enabled: false
+
+audio:
+  auto_transcribe: false
+  tts_enabled: false
+
 scheduler:
   enabled: true
   poll_interval: 15
-  timezone: America/Guayaquil
-  base_url: "http://127.0.0.1:8000"  # F7: debe coincidir con PORT
-knowledge:
-  auto_ingest_docs: true
-  auto_ingest_urls: false
-  skip_if_exists: true
-audio:
-  auto_transcribe: true
-  stt_model: gpt-4o-mini-transcribe
-  tts_enabled: false
-  tts_model: gpt-4o-mini-tts
-  tts_voice: onyx
+  base_url: "http://127.0.0.1:8000"
+
+agentos:
+  id: agnobot-gateway
+  name: AgnoBot Platform
+  port: 8000
+  tracing: true
+  mcp_server: true
+
+studio:
+  enabled: true
