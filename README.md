@@ -127,6 +127,10 @@ Conecta desde [os.agno.com](https://os.agno.com) > Add OS > Local.
 |---------|-------------|
 | `bash setup.sh` | Setup completo: venv + deps + wizard + validacion |
 | `python -m management.cli` | Wizard de onboarding (genera workspace + .env) |
+| `python -m management.cli doctor` | Diagnostica y repara problemas del workspace |
+| `python -m management.cli configure` | Reconfigura una seccion (modelo, DB, canales, keys) |
+| `python -m management.cli fallback` | Configura modelo fallback para rate limits |
+| `python -m management.cli help` | Muestra todos los comandos disponibles |
 | `python -m management.validator` | Validar workspace, API keys, canales, AWS |
 
 ### Administracion en tiempo real
@@ -145,8 +149,10 @@ Conecta desde [os.agno.com](https://os.agno.com) > Add OS > Local.
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| `GET` | `/admin/health` | Health check: version, agentes, teams, modelo, scheduler |
+| `GET` | `/admin/health` | Health check: version, agentes, teams, modelo, fallback, scheduler |
 | `POST` | `/admin/reload` | Solicitar hot-reload al daemon (no mata sesiones) |
+| `POST` | `/admin/fallback/activate` | Activar modelo fallback manualmente |
+| `POST` | `/admin/fallback/restore` | Restaurar modelo principal |
 
 Ejemplos:
 
@@ -221,10 +227,16 @@ model:
   provider: "anthropic"
   id: "claude-sonnet-4-20250514"
 
-# Claude Sonnet via Bedrock (sin API key Anthropic)
+# Claude Sonnet 4.6 via Bedrock (sin API key Anthropic)
 model:
   provider: "aws_bedrock_claude"
-  id: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+  id: "us.anthropic.claude-sonnet-4-6"
+  aws_region: "us-east-1"
+
+# Claude Opus 4.6 via Bedrock (mas capaz)
+model:
+  provider: "aws_bedrock_claude"
+  id: "us.anthropic.claude-opus-4-6-v1"
   aws_region: "us-east-1"
 
 # Amazon Nova Pro
@@ -327,6 +339,97 @@ Caracteristicas:
 
 ---
 
+## Dominio personalizado + SSL (opcional)
+
+Para exponer OpenAgno con HTTPS (requerido para webhooks de WhatsApp y Slack en produccion), puedes configurar un dominio personalizado con certificado SSL automatico.
+
+### Requisitos previos
+
+- Un servidor con IP publica (ej: AWS Lightsail, EC2, DigitalOcean, VPS)
+- Un dominio registrado (ej: `tu-dominio.com`) con el registro DNS **A** apuntando a la IP publica del servidor
+- Puertos **80** y **443** abiertos en el firewall/security group
+
+### Paso 1: Verificar DNS
+
+Asegurate de que tu dominio resuelve a la IP de tu servidor:
+
+```bash
+# Desde cualquier maquina
+dig +short tu-dominio.com
+# Debe devolver la IP publica de tu servidor
+```
+
+### Paso 2: Instalar Caddy (reverse proxy con SSL automatico)
+
+[Caddy](https://caddyserver.com) obtiene y renueva certificados Let's Encrypt automaticamente.
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y caddy
+
+# Verificar instalacion
+caddy version
+```
+
+### Paso 3: Configurar reverse proxy
+
+```bash
+sudo tee /etc/caddy/Caddyfile > /dev/null << 'EOF'
+tu-dominio.com {
+    reverse_proxy localhost:8000
+}
+EOF
+
+# Aplicar configuracion (obtiene certificado SSL automaticamente)
+sudo systemctl restart caddy
+```
+
+### Paso 4: Verificar HTTPS
+
+```bash
+# Verificar que el certificado SSL es valido
+curl -s -o /dev/null -w "%{http_code}" https://tu-dominio.com/admin/health
+# Debe devolver 200
+```
+
+### Paso 5: Configurar webhooks con tu dominio
+
+Una vez que HTTPS esta activo, usa tu dominio para los webhooks de los canales:
+
+| Canal | Webhook URL |
+|-------|-------------|
+| WhatsApp | `https://tu-dominio.com/whatsapp/webhook` |
+| Slack | `https://tu-dominio.com/slack/events` |
+
+**WhatsApp**: En Meta for Developers > Tu App > WhatsApp > Configuration, configura la Callback URL y el Verify Token.
+
+**Slack**: En api.slack.com > Tu App > Event Subscriptions, configura la Request URL.
+
+### Verificar webhook de WhatsApp
+
+```bash
+# Simular verificacion de Meta
+curl "https://tu-dominio.com/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=TU_VERIFY_TOKEN&hub.challenge=test123"
+# Debe devolver: test123
+```
+
+### AWS Lightsail (ejemplo)
+
+1. Crear instancia Ubuntu en Lightsail
+2. Asignar IP estatica a la instancia
+3. En **Networking**, abrir puertos **80** (HTTP) y **443** (HTTPS)
+4. En **Domains & DNS**, crear zona DNS y agregar registro **A** apuntando a la IP estatica
+5. Clonar OpenAgno, ejecutar `bash setup.sh` y seguir los pasos anteriores
+
+### Notas
+
+- Caddy renueva certificados automaticamente (no requiere cron ni certbot)
+- Si prefieres nginx + certbot, consulta la [documentacion de Let's Encrypt](https://letsencrypt.org/getting-started/)
+- Para desarrollo local, HTTPS no es necesario — el gateway funciona en `http://localhost:8000`
+- El webhook de WhatsApp solo funciona con HTTPS y un dominio publico valido
+
+---
+
 ## Canales
 
 ### WhatsApp
@@ -341,6 +444,8 @@ WHATSAPP_VERIFY_TOKEN=tu_verify_token
 
 Soporta: texto, imagen, video, audio, documentos. Phone como `user_id`, sesion automatica.
 Produccion: agregar `WHATSAPP_APP_SECRET` + `APP_ENV=production`.
+
+Webhook: `https://tu-dominio.com/whatsapp/webhook` (requiere [dominio + SSL](#dominio-personalizado--ssl-opcional)).
 
 ### Slack
 
@@ -361,6 +466,8 @@ channels:
 
 El webhook de Slack se registra automaticamente en `/slack/events`. Responde a @menciones en canales y a todos los DMs. Thread timestamps como `session_id`.
 
+Webhook: `https://tu-dominio.com/slack/events` (requiere [dominio + SSL](#dominio-personalizado--ssl-opcional)).
+
 ### Web (Studio)
 
 Disponible via [os.agno.com](https://os.agno.com) > Add OS > Local > `http://localhost:8000`. Muestra todos los agentes, sub-agentes y teams registrados.
@@ -376,6 +483,57 @@ python -m management.cli
 ```
 
 Wizard interactivo: identidad, modelo (incluye Bedrock), base de datos, canales, tools, scheduler/auto-ingesta y embeddings. Genera sub-agentes, teams, WorkspaceTools y SchedulerTools.
+
+### Doctor — Diagnostica y repara
+
+```bash
+python -m management.cli doctor
+```
+
+Verifica: archivos del workspace, variables de entorno, conectividad a DB, modelo, SSL (Caddy), y configuracion de fallback. Ofrece reparacion interactiva para problemas detectados.
+
+### Configure — Reconfigura sin regenerar
+
+```bash
+python -m management.cli configure
+```
+
+Permite cambiar una seccion especifica del workspace sin regenerar todo:
+- Modelo principal (cambia provider/ID y actualiza sub-agentes)
+- Base de datos (Supabase, PostgreSQL local, SQLite)
+- Canales (WhatsApp, Slack)
+- API Keys (.env)
+- Herramientas (toggle on/off)
+- Identidad del agente (nombre, descripcion)
+
+### Fallback — Modelo alternativo para rate limits
+
+```bash
+python -m management.cli fallback
+```
+
+Configura un modelo de respaldo que se activa cuando el principal falla (rate limit, error 429, etc).
+
+```yaml
+# workspace/config.yaml
+model:
+  provider: aws_bedrock_claude
+  id: us.anthropic.claude-opus-4-6-v1
+  aws_region: us-east-1
+  fallback:
+    provider: google
+    id: gemini-2.0-flash
+```
+
+El fallback se puede activar manualmente via API:
+
+```bash
+# Activar fallback
+curl -X POST http://localhost:8000/admin/fallback/activate
+
+# Restaurar modelo principal
+curl -X POST http://localhost:8000/admin/fallback/restore
+```
 
 ### Validacion — Verifica configuracion
 
@@ -424,9 +582,9 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **F3: Multi-Canal + Teams** | Sub-agentes YAML + Teams + Slack + Knowledge endpoints | Completada |
 | **F4: Remote Agents** | Agentes distribuidos + MCP avanzado + A2A | Planificada |
 | **F5: Scheduler + Knowledge** | Cron AgentOS, auto-ingesta, Tavily MCP/tool, validador extendido | Completada |
-| **F6: Autonomia** | Daemon, Bedrock, WorkspaceTools, SchedulerTools, Background Hooks | **En curso** |
+| **F6: Autonomia** | Daemon, Bedrock, WorkspaceTools, SchedulerTools, SSL/Dominio | **Completada** |
 
-### Fase 6 (actual)
+### Fase 6 (completada)
 
 - **Service Manager** — Daemon supervisor con monitor + PID file + senal reload
 - **AWS Bedrock** — Soporte `aws_bedrock` (Nova, Mistral) y `aws_bedrock_claude` (Claude optimizado)
@@ -434,9 +592,13 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 - **SchedulerTools** — Gestion de crons via API REST nativa de AgentOS
 - **Background Hooks** — `run_hooks_in_background=True` para hooks no bloqueantes
 - **Endpoints admin** — `POST /admin/reload` + `GET /admin/health`
-- **CLI actualizado** — Soporte Bedrock en onboarding wizard
+- **CLI actualizado** — Soporte Bedrock en onboarding wizard (Claude Opus 4.6, Sonnet 4.6)
 - **Validador extendido** — Valida credenciales AWS
 - **Deploy systemd** — `deploy/openagno.service` para produccion
+- **Dominio + SSL** — Guia para dominio personalizado con Caddy + Let's Encrypt automatico
+- **Modelos actualizados** — IDs de Bedrock actualizados a Claude Opus 4.6 y Sonnet 4.6
+- **Modelo Fallback** — Soporte para modelo de respaldo en caso de rate limits
+- **CLI expandido** — Comandos interactivos `doctor`, `configure` y `fallback`
 
 ---
 
@@ -470,6 +632,8 @@ python -m management.admin create-memory --user admin --memory "Prefiere respues
 | **Service Manager** | Daemon supervisor con monitor, health check y hot-reload |
 | **Background Hooks** | Hooks post-run no bloquean la respuesta |
 | **Deploy systemd** | Unit file para produccion con restart automatico |
+| **Dominio + SSL** | Guia para dominio personalizado con Caddy y Let's Encrypt |
+| **Modelo Fallback** | Configura un modelo de respaldo activable manual o via API |
 
 ---
 
@@ -556,6 +720,8 @@ OpenAgno/
 | `POST` | `/schedules/{id}/trigger` | Ejecutar schedule manualmente |
 | `POST` | `/whatsapp/webhook` | Webhook para mensajes WhatsApp |
 | `POST` | `/slack/events` | Webhook para eventos Slack |
+| `POST` | `/admin/fallback/activate` | Activar modelo fallback manualmente |
+| `POST` | `/admin/fallback/restore` | Restaurar modelo principal |
 
 ---
 

@@ -1,0 +1,67 @@
+id: epam_consultas
+enabled: true
+name: "EPAM - Consulta Ciudadana (Registro Civil Ecuador)"
+description: >
+  Integración con la API de EPAM (Empresa Pública Aguas de Manta) para consultar
+  datos demográficos del Registro Civil ecuatoriano por número de cédula.
+  
+  Endpoint: http://consultas.epam.gob.ec:3001/consultar?identificacion={cedula}
+  Método: GET
+  Autenticación: Ninguna (API pública)
+
+api:
+  base_url: "http://consultas.epam.gob.ec:3001"
+  endpoints:
+    consultar:
+      path: "/consultar"
+      method: GET
+      params:
+        identificacion: "{cedula}"
+      description: "Consulta datos demográficos por número de cédula ecuatoriana"
+
+response_schema:
+  root: "paquete"
+  fields:
+    - campo: "numeroPaquete"
+      tipo: "string"
+    - campo: "entidades.entidad[].nombre"
+      tipo: "string"
+      descripcion: "Nombre de la fuente de datos (ej: Datos Demográficos (Registro Civil))"
+    - campo: "entidades.entidad[].filas.fila[].columnas.columna[]"
+      tipo: "array"
+      descripcion: "Lista de campos con {campo, valor}"
+  
+  datos_disponibles:
+    - campo: "cedula"
+      descripcion: "Número de cédula de identidad"
+    - campo: "nombre"
+      descripcion: "Nombre completo (APELLIDOS NOMBRES)"
+    - campo: "fechaNacimiento"
+      descripcion: "Fecha de nacimiento (DD/MM/YYYY)"
+    - campo: "lugarNacimiento"
+      descripcion: "Provincia/Cantón/Parroquia"
+    - campo: "estadoCivil"
+      descripcion: "Estado civil"
+    - campo: "conyuge"
+      descripcion: "Nombre del cónyuge"
+    - campo: "profesion"
+      descripcion: "Profesión registrada"
+    - campo: "condicionCiudadano"
+      descripcion: "Condición (CIUDADANO, etc.)"
+    - campo: "fechaExpedicion"
+      descripcion: "Fecha de expedición de cédula"
+    - campo: "fechaExpiracion"
+      descripcion: "Fecha de expiración de cédula"
+    - campo: "actaDefuncion"
+      descripcion: "Número de acta de defunción (0 si no aplica)"
+    - campo: "fechaDefuncion"
+      descripcion: "Fecha de defunción (vacío si vive)"
+    - campo: "fechaInscripcionDefuncion"
+      descripcion: "Fecha de inscripción de defunción"
+
+tags:
+  - ecuador
+  - registro-civil
+  - consulta-ciudadana
+  - epam
+  - cedula

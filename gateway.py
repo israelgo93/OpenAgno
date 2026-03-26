@@ -35,12 +35,35 @@ ws = load_workspace()
 config = ws["config"]
 db = ws["db"]
 main_agent = ws["main_agent"]
+fallback_model = ws.get("fallback_model")
 sub_agents = ws["sub_agents"]
 teams = ws["teams"]
 knowledge = ws["knowledge"]
 schedules = ws["schedules"]
 knowledge_doc_paths = ws["knowledge_doc_paths"]
 knowledge_urls = ws["knowledge_urls"]
+
+if fallback_model:
+	_original_model = main_agent.model
+	_using_fallback = False
+
+	def _swap_to_fallback() -> None:
+		"""Cambia el agente principal al modelo fallback."""
+		global _using_fallback
+		if not _using_fallback and fallback_model:
+			main_agent.model = fallback_model
+			_using_fallback = True
+			logger.warning(f"FALLBACK activado: {fallback_model.id}")
+
+	def _swap_to_primary() -> None:
+		"""Restaura el modelo principal."""
+		global _using_fallback
+		if _using_fallback:
+			main_agent.model = _original_model
+			_using_fallback = False
+			logger.info(f"Modelo principal restaurado: {_original_model.id}")
+
+	logger.info(f"Fallback disponible: {fallback_model.id}")
 
 
 async def _auto_ingest_knowledge() -> None:
@@ -221,15 +244,37 @@ async def admin_reload():
 
 @base_app.get("/admin/health")
 async def admin_health():
+	model_info = {**config.get("model", {})}
+	if fallback_model:
+		model_info["fallback_active"] = _using_fallback if "_using_fallback" in dir() else False
+		model_info["fallback_id"] = fallback_model.id
 	return {
 		"status": "healthy",
-		"version": "0.6.0",
+		"version": "0.6.1",
 		"agents": [a.id for a in all_agents],
 		"teams": [t.id for t in teams] if teams else [],
 		"channels": config.get("channels", []),
-		"model": config.get("model", {}),
+		"model": model_info,
 		"scheduler": scheduler_cfg.get("enabled", False),
 	}
+
+
+@base_app.post("/admin/fallback/activate")
+async def admin_fallback_activate():
+	"""Activa manualmente el modelo fallback."""
+	if not fallback_model:
+		return {"error": "No hay modelo fallback configurado"}
+	_swap_to_fallback()
+	return {"status": "fallback_active", "model": fallback_model.id}
+
+
+@base_app.post("/admin/fallback/restore")
+async def admin_fallback_restore():
+	"""Restaura el modelo principal."""
+	if not fallback_model:
+		return {"error": "No hay modelo fallback configurado"}
+	_swap_to_primary()
+	return {"status": "primary_restored", "model": _original_model.id}
 
 app = agent_os.get_app()
 

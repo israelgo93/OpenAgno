@@ -3,9 +3,12 @@ agent:
   id: agnobot-main
   description: Es un orquestador de proyecto y tarea para Israel
 model:
-  provider: aws_bedrock_claude
-  id: us.anthropic.claude-opus-4-20250805-v1:0
-  aws_region: us-east-1
+  provider: google
+  id: gemini-flash-lite-latest
+  fallback:
+    provider: aws_bedrock_claude
+    id: us.anthropic.claude-sonnet-4-6
+    aws_region: us-east-1
 database:
   type: supabase
   knowledge_table: agnobot_knowledge_contents

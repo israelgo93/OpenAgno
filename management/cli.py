@@ -1,8 +1,11 @@
 """
-CLI de Onboarding v3 - Genera el workspace/ completo.
+CLI de Onboarding v4 - Genera, diagnostica y reconfigura el workspace.
 
-Ejecutar:
-	python -m management.cli
+Comandos:
+	python -m management.cli              # Setup wizard (genera workspace + .env)
+	python -m management.cli doctor       # Diagnostica y repara problemas
+	python -m management.cli configure    # Reconfigura una seccion especifica
+	python -m management.cli fallback     # Configura modelo fallback
 
 Genera:
 	workspace/config.yaml
@@ -13,6 +16,7 @@ Genera:
 	workspace/agents/teams.yaml
 	.env
 """
+import sys
 import os
 import yaml
 from pathlib import Path
@@ -86,8 +90,8 @@ def run_onboarding() -> None:
 	model_options = {
 		"1": "Gemini 2.0 Flash (Google - multimodal, recomendado)",
 		"2": "Claude Sonnet 4 (Anthropic - directo)",
-		"3": "Claude Sonnet 4 via Bedrock (AWS - sin API key Anthropic)",
-		"4": "Claude Opus 4 via Bedrock (AWS)",
+		"3": "Claude Sonnet 4.6 via Bedrock (AWS - sin API key Anthropic)",
+		"4": "Claude Opus 4.6 via Bedrock (AWS - mas capaz)",
 		"5": "GPT-4.1 (OpenAI)",
 		"6": "Amazon Nova Pro (AWS Bedrock)",
 	}
@@ -96,8 +100,8 @@ def run_onboarding() -> None:
 	model_map: dict[str, tuple[str, str, str]] = {
 		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
 		"2": ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
-		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-20250514-v1:0", "AWS_ACCESS_KEY_ID"),
-		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-20250805-v1:0", "AWS_ACCESS_KEY_ID"),
+		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
+		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-6-v1", "AWS_ACCESS_KEY_ID"),
 		"5": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
 		"6": ("aws_bedrock", "amazon.nova-pro-v1:0", "AWS_ACCESS_KEY_ID"),
 	}
@@ -486,5 +490,562 @@ Eres **{agent_name}**, un asistente personal multimodal autonomo.
 	print()
 
 
+def _load_current_config() -> dict:
+	"""Carga config.yaml actual."""
+	path = Path("workspace/config.yaml")
+	if not path.exists():
+		return {}
+	with open(path, "r", encoding="utf-8") as f:
+		return yaml.safe_load(f) or {}
+
+
+def _load_current_env() -> dict[str, str]:
+	"""Carga .env como dict."""
+	env: dict[str, str] = {}
+	path = Path(".env")
+	if not path.exists():
+		return env
+	for line in path.read_text(encoding="utf-8").splitlines():
+		line = line.strip()
+		if not line or line.startswith("#"):
+			continue
+		if "=" in line:
+			k, v = line.split("=", 1)
+			env[k.strip()] = v.strip()
+	return env
+
+
+def _update_env_var(key: str, value: str) -> None:
+	"""Actualiza o agrega una variable en .env."""
+	path = Path(".env")
+	if not path.exists():
+		path.write_text(f"{key}={value}\n", encoding="utf-8")
+		return
+	lines = path.read_text(encoding="utf-8").splitlines()
+	found = False
+	for i, line in enumerate(lines):
+		stripped = line.strip()
+		if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+			lines[i] = f"{key}={value}"
+			found = True
+			break
+	if not found:
+		lines.append(f"{key}={value}")
+	path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+	os.environ[key] = value
+
+
+# ==============================
+# DOCTOR - Diagnostico y reparacion
+# ==============================
+
+def run_doctor() -> None:
+	"""Diagnostica problemas del workspace y ofrece reparacion automatica."""
+	print()
+	print("=" * 50)
+	print("  OpenAgno Doctor - Diagnostico y Reparacion")
+	print("=" * 50)
+
+	load_dotenv(override=True)
+	errors = validate_workspace()
+	config = _load_current_config()
+	env = _load_current_env()
+	fixes_applied = 0
+
+	if not errors:
+		print("\n  [OK] Workspace saludable - no se encontraron problemas")
+		# Verificar conexion a DB
+		_doctor_check_db(config)
+		# Verificar modelo
+		_doctor_check_model(config, env)
+		print()
+		return
+
+	print(f"\n  Se encontraron {len(errors)} problema(s):\n")
+
+	for i, error in enumerate(errors, 1):
+		print(f"  {i}. {error}")
+
+		# Intentar reparar automaticamente
+		if ".env: falta" in error:
+			var_name = error.split("falta ")[1].split(" ")[0]
+			fix = _doctor_fix_env_var(var_name, config)
+			if fix:
+				fixes_applied += 1
+
+		elif "Falta " in error and ".yaml" in error:
+			filename = error.split("Falta ")[1].split(" ")[0]
+			fix = _doctor_fix_missing_file(filename)
+			if fix:
+				fixes_applied += 1
+
+	# Chequeos extra
+	print("\n  --- Chequeos adicionales ---")
+	_doctor_check_db(config)
+	_doctor_check_model(config, env)
+	_doctor_check_ssl()
+	_doctor_check_fallback(config)
+
+	print()
+	if fixes_applied:
+		print(f"  Se aplicaron {fixes_applied} reparacion(es)")
+	print(f"  Ejecuta 'python -m management.validator' para re-validar")
+	print("=" * 50)
+	print()
+
+
+def _doctor_fix_env_var(var_name: str, config: dict) -> bool:
+	"""Intenta reparar una variable de entorno faltante."""
+	print(f"\n    -> Reparar {var_name}?")
+	value = _prompt(f"Valor para {var_name} (Enter para omitir)")
+	if value:
+		_update_env_var(var_name, value)
+		print(f"    [FIXED] {var_name} configurado")
+		return True
+	print(f"    [SKIP] {var_name} omitido")
+	return False
+
+
+def _doctor_fix_missing_file(filename: str) -> bool:
+	"""Intenta reparar archivos faltantes."""
+	path = Path("workspace") / filename
+	if path.suffix == ".yaml":
+		print(f"    -> Creando {filename} con valores por defecto...")
+		path.parent.mkdir(parents=True, exist_ok=True)
+		_write_yaml(path, {})
+		print(f"    [FIXED] {filename} creado")
+		return True
+	return False
+
+
+def _doctor_check_db(config: dict) -> None:
+	"""Verifica conectividad a la base de datos."""
+	db_type = config.get("database", {}).get("type", "sqlite")
+	if db_type == "sqlite":
+		print("  [OK] SQLite (sin conexion remota)")
+		return
+	try:
+		import psycopg
+		host = os.getenv("DB_HOST", "")
+		port = os.getenv("DB_PORT", "5432")
+		user = os.getenv("DB_USER", "")
+		password = os.getenv("DB_PASSWORD", "")
+		name = os.getenv("DB_NAME", "postgres")
+		sslmode = os.getenv("DB_SSLMODE", "require")
+		conn = psycopg.connect(
+			f"host={host} port={port} user={user} password={password} dbname={name} sslmode={sslmode}",
+			connect_timeout=5,
+		)
+		conn.close()
+		print(f"  [OK] Base de datos: {db_type} ({host}:{port})")
+	except Exception as e:
+		print(f"  [ERROR] Base de datos: {e}")
+
+
+def _doctor_check_model(config: dict, env: dict) -> None:
+	"""Verifica que el modelo configurado es accesible."""
+	model = config.get("model", {})
+	provider = model.get("provider", "")
+	model_id = model.get("id", "")
+	fallback = model.get("fallback", {})
+
+	print(f"  [INFO] Modelo principal: {provider} / {model_id}")
+	if fallback.get("id"):
+		print(f"  [INFO] Modelo fallback: {fallback.get('provider', provider)} / {fallback['id']}")
+	else:
+		print(f"  [WARN] Sin modelo fallback configurado (util para rate limits)")
+		print(f"         Ejecuta: python -m management.cli fallback")
+
+
+def _doctor_check_ssl() -> None:
+	"""Verifica si hay reverse proxy con SSL."""
+	import subprocess
+	try:
+		result = subprocess.run(
+			["systemctl", "is-active", "caddy"],
+			capture_output=True, text=True, timeout=5,
+		)
+		if result.stdout.strip() == "active":
+			print("  [OK] Caddy (reverse proxy + SSL) activo")
+		else:
+			print("  [INFO] Caddy no activo (webhooks requieren HTTPS)")
+	except Exception:
+		print("  [INFO] Caddy no instalado (webhooks requieren HTTPS)")
+
+
+def _doctor_check_fallback(config: dict) -> None:
+	"""Verifica configuracion de fallback."""
+	model = config.get("model", {})
+	if not model.get("fallback"):
+		return
+	fb = model["fallback"]
+	fb_provider = fb.get("provider", model.get("provider", ""))
+	fb_id = fb.get("id", "")
+	if fb_id:
+		print(f"  [OK] Fallback configurado: {fb_provider} / {fb_id}")
+
+
+# ==============================
+# FALLBACK - Configura modelo alternativo
+# ==============================
+
+# IDs de modelos disponibles por proveedor para referencia del usuario
+BEDROCK_MODELS = {
+	"1": ("us.anthropic.claude-opus-4-6-v1", "Claude Opus 4.6 (AWS)"),
+	"2": ("us.anthropic.claude-sonnet-4-6", "Claude Sonnet 4.6 (AWS)"),
+	"3": ("us.anthropic.claude-sonnet-4-5-20250929-v1:0", "Claude Sonnet 4.5 (AWS)"),
+	"4": ("us.anthropic.claude-opus-4-20250514-v1:0", "Claude Opus 4 (AWS)"),
+	"5": ("us.anthropic.claude-sonnet-4-20250514-v1:0", "Claude Sonnet 4 (AWS)"),
+	"6": ("us.anthropic.claude-haiku-4-5-20251001-v1:0", "Claude Haiku 4.5 (AWS)"),
+	"7": ("amazon.nova-pro-v1:0", "Amazon Nova Pro"),
+}
+
+
+def run_fallback() -> None:
+	"""Configura un modelo fallback para cuando el principal falla (rate limit, etc)."""
+	print()
+	print("=" * 50)
+	print("  OpenAgno - Configurar Modelo Fallback")
+	print("=" * 50)
+
+	config = _load_current_config()
+	model = config.get("model", {})
+	provider = model.get("provider", "")
+	model_id = model.get("id", "")
+
+	print(f"\n  Modelo principal actual: {provider} / {model_id}")
+
+	if model.get("fallback", {}).get("id"):
+		fb = model["fallback"]
+		print(f"  Fallback actual: {fb.get('provider', provider)} / {fb['id']}")
+
+	choice = _prompt_choice("Selecciona modelo fallback", {
+		"1": "Gemini 2.0 Flash (Google - gratis, rapido)",
+		"2": "Claude Sonnet 4.6 via Bedrock (AWS)",
+		"3": "Claude Haiku 4.5 via Bedrock (AWS - economico)",
+		"4": "GPT-4.1 (OpenAI)",
+		"5": "Amazon Nova Pro (AWS Bedrock - economico)",
+		"6": "Otro modelo de Bedrock",
+		"7": "Quitar fallback",
+	})
+
+	fallback_map: dict[str, tuple[str, str, str]] = {
+		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
+		"2": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
+		"3": ("aws_bedrock_claude", "us.anthropic.claude-haiku-4-5-20251001-v1:0", "AWS_ACCESS_KEY_ID"),
+		"4": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
+		"5": ("aws_bedrock", "amazon.nova-pro-v1:0", "AWS_ACCESS_KEY_ID"),
+	}
+
+	if choice == "7":
+		# Quitar fallback
+		if "fallback" in model:
+			del model["fallback"]
+			config["model"] = model
+			_write_yaml(Path("workspace/config.yaml"), config)
+			print("\n  [OK] Fallback eliminado")
+		else:
+			print("\n  No habia fallback configurado")
+		return
+
+	if choice == "6":
+		print("\n  Modelos Bedrock disponibles:")
+		for k, (mid, label) in BEDROCK_MODELS.items():
+			print(f"    [{k}] {label} ({mid})")
+		sub = input(f"  Seleccion [2]: ").strip() or "2"
+		fb_id, _ = BEDROCK_MODELS.get(sub, BEDROCK_MODELS["2"])
+		fb_provider = "aws_bedrock_claude" if "anthropic" in fb_id else "aws_bedrock"
+		fb_key = "AWS_ACCESS_KEY_ID"
+	else:
+		fb_provider, fb_id, fb_key = fallback_map.get(choice, fallback_map["1"])
+
+	# Verificar que la API key del fallback existe
+	if not fb_provider.startswith("aws_bedrock"):
+		if not os.getenv(fb_key):
+			val = _prompt(f"{fb_key} (requerido para fallback)")
+			if val:
+				_update_env_var(fb_key, val)
+
+	model["fallback"] = {
+		"provider": fb_provider,
+		"id": fb_id,
+	}
+	if fb_provider.startswith("aws_bedrock"):
+		model["fallback"]["aws_region"] = model.get("aws_region", "us-east-1")
+
+	config["model"] = model
+	_write_yaml(Path("workspace/config.yaml"), config)
+
+	print(f"\n  [OK] Fallback configurado: {fb_provider} / {fb_id}")
+	print(f"  Cuando el modelo principal falle (rate limit, error), se usara el fallback")
+	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
+	print()
+
+
+# ==============================
+# CONFIGURE - Reconfigura secciones
+# ==============================
+
+def run_configure() -> None:
+	"""Reconfigura una seccion especifica sin regenerar todo."""
+	print()
+	print("=" * 50)
+	print("  OpenAgno - Reconfigurar Workspace")
+	print("=" * 50)
+
+	config = _load_current_config()
+	if not config:
+		print("\n  No hay workspace configurado. Ejecuta: python -m management.cli")
+		return
+
+	choice = _prompt_choice("Que deseas reconfigurar?", {
+		"1": "Modelo principal",
+		"2": "Modelo fallback",
+		"3": "Base de datos",
+		"4": "Canales (WhatsApp/Slack)",
+		"5": "API Keys (.env)",
+		"6": "Herramientas",
+		"7": "Identidad del agente",
+	})
+
+	match choice:
+		case "1":
+			_configure_model(config)
+		case "2":
+			run_fallback()
+			return
+		case "3":
+			_configure_database(config)
+		case "4":
+			_configure_channels(config)
+		case "5":
+			_configure_env_keys()
+		case "6":
+			_configure_tools(config)
+		case "7":
+			_configure_identity(config)
+
+	print()
+
+
+def _configure_model(config: dict) -> None:
+	"""Reconfigura el modelo principal."""
+	model = config.get("model", {})
+	print(f"\n  Modelo actual: {model.get('provider')} / {model.get('id')}")
+
+	model_options = {
+		"1": "Gemini 2.0 Flash (Google)",
+		"2": "Claude Sonnet 4 (Anthropic directo)",
+		"3": "Claude Sonnet 4.6 via Bedrock",
+		"4": "Claude Opus 4.6 via Bedrock",
+		"5": "GPT-4.1 (OpenAI)",
+		"6": "Amazon Nova Pro (Bedrock)",
+	}
+	model_map: dict[str, tuple[str, str, str]] = {
+		"1": ("google", "gemini-2.0-flash", "GOOGLE_API_KEY"),
+		"2": ("anthropic", "claude-sonnet-4-20250514", "ANTHROPIC_API_KEY"),
+		"3": ("aws_bedrock_claude", "us.anthropic.claude-sonnet-4-6", "AWS_ACCESS_KEY_ID"),
+		"4": ("aws_bedrock_claude", "us.anthropic.claude-opus-4-6-v1", "AWS_ACCESS_KEY_ID"),
+		"5": ("openai", "gpt-4.1", "OPENAI_API_KEY"),
+		"6": ("aws_bedrock", "amazon.nova-pro-v1:0", "AWS_ACCESS_KEY_ID"),
+	}
+
+	sel = _prompt_choice("Nuevo modelo", model_options)
+	provider, model_id, key_name = model_map.get(sel, model_map["1"])
+
+	new_model: dict = {"provider": provider, "id": model_id}
+
+	if provider.startswith("aws_bedrock"):
+		if not os.getenv("AWS_ACCESS_KEY_ID"):
+			_update_env_var("AWS_ACCESS_KEY_ID", _prompt("AWS Access Key ID"))
+			_update_env_var("AWS_SECRET_ACCESS_KEY", _prompt("AWS Secret Access Key"))
+		new_model["aws_region"] = _prompt("AWS Region", model.get("aws_region", "us-east-1"))
+	else:
+		if not os.getenv(key_name):
+			val = _prompt(f"{key_name}")
+			if val:
+				_update_env_var(key_name, val)
+
+	# Preservar fallback si existe
+	if model.get("fallback"):
+		new_model["fallback"] = model["fallback"]
+
+	config["model"] = new_model
+	_write_yaml(Path("workspace/config.yaml"), config)
+
+	# Actualizar sub-agentes tambien
+	agents_dir = Path("workspace/agents")
+	if agents_dir.exists():
+		for f in agents_dir.glob("*.yaml"):
+			if f.name == "teams.yaml":
+				continue
+			try:
+				data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+				if "agent" in data and "model" in data["agent"]:
+					data["agent"]["model"] = {"provider": provider, "id": model_id}
+					_write_yaml(f, data)
+			except Exception:
+				pass
+
+	print(f"\n  [OK] Modelo actualizado: {provider} / {model_id}")
+	print(f"  Reinicia el gateway para aplicar")
+
+
+def _configure_database(config: dict) -> None:
+	"""Reconfigura la base de datos."""
+	db = config.get("database", {})
+	print(f"\n  DB actual: {db.get('type')}")
+
+	db_options = {
+		"1": "Supabase (PostgreSQL managed)",
+		"2": "PostgreSQL local (Docker)",
+		"3": "SQLite (solo desarrollo)",
+	}
+	sel = _prompt_choice("Nueva base de datos", db_options)
+	db_type = {"1": "supabase", "2": "local", "3": "sqlite"}.get(sel, "supabase")
+
+	if db_type == "supabase":
+		print("\n  Configuracion Supabase:")
+		_update_env_var("DB_HOST", _prompt("DB Host", os.getenv("DB_HOST", "")))
+		_update_env_var("DB_PORT", _prompt("DB Port", os.getenv("DB_PORT", "5432")))
+		_update_env_var("DB_USER", _prompt("DB User", os.getenv("DB_USER", "")))
+		_update_env_var("DB_PASSWORD", _prompt("DB Password"))
+		_update_env_var("DB_NAME", _prompt("DB Name", os.getenv("DB_NAME", "postgres")))
+	elif db_type == "local":
+		for k, v in {"DB_HOST": "localhost", "DB_PORT": "5532", "DB_USER": "ai", "DB_PASSWORD": "ai", "DB_NAME": "ai"}.items():
+			_update_env_var(k, v)
+
+	config["database"]["type"] = db_type
+	_write_yaml(Path("workspace/config.yaml"), config)
+	print(f"\n  [OK] Base de datos actualizada: {db_type}")
+
+
+def _configure_channels(config: dict) -> None:
+	"""Reconfigura canales."""
+	current = config.get("channels", [])
+	print(f"\n  Canales actuales: {', '.join(current) if current else 'ninguno'}")
+
+	channel_options = {
+		"1": "WhatsApp",
+		"2": "Slack",
+		"3": "WhatsApp + Slack",
+	}
+	sel = _prompt_choice("Canales", channel_options)
+	channels = {"1": ["whatsapp"], "2": ["slack"], "3": ["whatsapp", "slack"]}.get(sel, ["whatsapp"])
+
+	if "whatsapp" in channels and "whatsapp" not in current:
+		print("\n  Configuracion WhatsApp:")
+		_update_env_var("WHATSAPP_ACCESS_TOKEN", _prompt("Access Token"))
+		_update_env_var("WHATSAPP_PHONE_NUMBER_ID", _prompt("Phone Number ID"))
+		_update_env_var("WHATSAPP_VERIFY_TOKEN", _prompt("Verify Token"))
+
+	if "slack" in channels and "slack" not in current:
+		print("\n  Configuracion Slack:")
+		_update_env_var("SLACK_TOKEN", _prompt("Bot Token (xoxb-...)"))
+		_update_env_var("SLACK_SIGNING_SECRET", _prompt("Signing Secret"))
+
+	config["channels"] = channels
+	_write_yaml(Path("workspace/config.yaml"), config)
+	print(f"\n  [OK] Canales actualizados: {', '.join(channels)}")
+
+
+def _configure_env_keys() -> None:
+	"""Actualiza API keys en .env."""
+	print("\n  Variables actuales en .env:")
+	env = _load_current_env()
+	for k, v in env.items():
+		if k.startswith("#"):
+			continue
+		masked = v[:8] + "..." if len(v) > 10 else v
+		print(f"    {k} = {masked}")
+
+	print("\n  Escribe VARIABLE=valor (linea vacia para terminar):")
+	while True:
+		line = input("  > ").strip()
+		if not line:
+			break
+		if "=" in line:
+			k, v = line.split("=", 1)
+			_update_env_var(k.strip(), v.strip())
+			print(f"    [OK] {k.strip()} actualizado")
+		else:
+			print(f"    [ERROR] Formato: VARIABLE=valor")
+
+
+def _configure_tools(config: dict) -> None:
+	"""Reconfigura herramientas."""
+	tools_path = Path("workspace/tools.yaml")
+	if not tools_path.exists():
+		print("  [ERROR] tools.yaml no encontrado")
+		return
+	tools = yaml.safe_load(tools_path.read_text(encoding="utf-8")) or {}
+	optional = tools.get("optional", [])
+
+	print("\n  Herramientas opcionales:")
+	for i, t in enumerate(optional):
+		status = "ON" if t.get("enabled", False) else "OFF"
+		print(f"    [{i+1}] {t.get('name', '?'):20s} [{status}]")
+
+	sel = _prompt("Numero para toggle (Enter para salir)")
+	if sel and sel.isdigit():
+		idx = int(sel) - 1
+		if 0 <= idx < len(optional):
+			optional[idx]["enabled"] = not optional[idx].get("enabled", False)
+			new_status = "ON" if optional[idx]["enabled"] else "OFF"
+			_write_yaml(tools_path, tools)
+			print(f"    [OK] {optional[idx]['name']} -> {new_status}")
+
+
+def _configure_identity(config: dict) -> None:
+	"""Reconfigura identidad del agente."""
+	agent = config.get("agent", {})
+	print(f"\n  Nombre actual: {agent.get('name')}")
+	print(f"  Descripcion: {agent.get('description')}")
+
+	new_name = _prompt("Nuevo nombre", agent.get("name", ""))
+	new_desc = _prompt("Nueva descripcion", agent.get("description", ""))
+
+	config["agent"]["name"] = new_name
+	config["agent"]["description"] = new_desc
+	_write_yaml(Path("workspace/config.yaml"), config)
+	print(f"\n  [OK] Identidad actualizada: {new_name}")
+
+
+# ==============================
+# MAIN - Router de comandos
+# ==============================
+
+def main() -> None:
+	"""Punto de entrada principal del CLI."""
+	args = sys.argv[1:]
+
+	if not args:
+		run_onboarding()
+		return
+
+	command = args[0].lower()
+
+	match command:
+		case "doctor":
+			run_doctor()
+		case "fallback":
+			run_fallback()
+		case "configure" | "config" | "reconfig":
+			run_configure()
+		case "help":
+			print()
+			print("  OpenAgno CLI - Comandos disponibles:")
+			print()
+			print("  python -m management.cli              Setup wizard (genera workspace)")
+			print("  python -m management.cli doctor       Diagnostica y repara problemas")
+			print("  python -m management.cli configure    Reconfigura una seccion")
+			print("  python -m management.cli fallback     Configura modelo fallback")
+			print("  python -m management.cli help         Muestra esta ayuda")
+			print()
+		case _:
+			print(f"  Comando desconocido: {command}")
+			print(f"  Ejecuta: python -m management.cli help")
+
+
 if __name__ == "__main__":
-	run_onboarding()
+	main()

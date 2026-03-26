@@ -406,8 +406,8 @@ def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
 	return mcp_tools
 
 
-def build_model(model_config: dict[str, Any]) -> Any:
-	"""Construye el modelo segun la configuracion.
+def _build_single_model(provider: str, model_id: str, aws_region: str) -> Any:
+	"""Construye una instancia de modelo por proveedor.
 
 	Proveedores verificados contra docs.agno.com:
 	- google:             from agno.models.google import Gemini
@@ -416,10 +416,6 @@ def build_model(model_config: dict[str, Any]) -> Any:
 	- aws_bedrock:        from agno.models.aws import AwsBedrock  (Mistral, Nova)
 	- aws_bedrock_claude: from agno.models.aws import Claude       (Anthropic via Bedrock)
 	"""
-	provider = model_config.get("provider", "google")
-	model_id = model_config.get("id", "gemini-2.0-flash")
-	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
-
 	match provider:
 		case "google":
 			from agno.models.google import Gemini
@@ -438,6 +434,39 @@ def build_model(model_config: dict[str, Any]) -> Any:
 			return BedrockClaude(id=model_id, aws_region=aws_region)
 		case _:
 			raise ValueError(f"Proveedor de modelo no soportado: {provider}")
+
+
+def build_model(model_config: dict[str, Any]) -> Any:
+	"""Construye el modelo con fallback opcional para rate limits."""
+	provider = model_config.get("provider", "google")
+	model_id = model_config.get("id", "gemini-2.0-flash")
+	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
+
+	model = _build_single_model(provider, model_id, aws_region)
+
+	return model
+
+
+def build_fallback_model(model_config: dict[str, Any]) -> Optional[Any]:
+	"""Construye el modelo fallback si esta configurado."""
+	fallback_config = model_config.get("fallback", {})
+	if not fallback_config or not fallback_config.get("id"):
+		return None
+
+	provider = model_config.get("provider", "google")
+	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
+
+	fb_provider = fallback_config.get("provider", provider)
+	fb_id = fallback_config["id"]
+	fb_region = fallback_config.get("aws_region", aws_region)
+
+	try:
+		fb_model = _build_single_model(fb_provider, fb_id, fb_region)
+		logger.info(f"Modelo fallback disponible: {fb_provider}/{fb_id}")
+		return fb_model
+	except Exception as e:
+		logger.warning(f"No se pudo construir modelo fallback: {e}")
+		return None
 
 
 TEAM_MODE_MAP: dict[str, TeamMode] = {
@@ -674,7 +703,9 @@ def load_workspace() -> dict[str, Any]:
 	tools.extend(mcp_tools)
 
 	instructions = load_instructions()
-	model = build_model(config.get("model", {}))
+	model_config = config.get("model", {})
+	model = build_model(model_config)
+	fallback_model = build_fallback_model(model_config)
 	mem_config = config.get("memory", {})
 	agent_config = config.get("agent", {})
 
@@ -713,6 +744,7 @@ def load_workspace() -> dict[str, Any]:
 		"db": db,
 		"knowledge": knowledge,
 		"main_agent": main_agent,
+		"fallback_model": fallback_model,
 		"sub_agents": sub_agents,
 		"teams": teams,
 		"mcp_config": mcp_config,
