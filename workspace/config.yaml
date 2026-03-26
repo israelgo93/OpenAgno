@@ -1,8 +1,7 @@
 agent:
   name: MagnoPM
   id: agnobot-main
-  description: Agente especializado en orquestacion y creacion agentes con el framwork
-    Agno.
+  description: Agente de orquestacion de agentes.
 model:
   provider: aws_bedrock_claude
   id: us.anthropic.claude-opus-4-6-v1
