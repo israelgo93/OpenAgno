@@ -9,6 +9,7 @@ agno[os,scheduler]>=1.5.0
 openai>=1.30.0
 google-genai>=1.0.0
 anthropic>=0.30.0
+mistralai>=1.0.0
 
 # Tools — builtin
 duckduckgo-search>=6.0

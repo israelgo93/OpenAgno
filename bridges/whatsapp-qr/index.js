@@ -29,6 +29,23 @@ let currentQR = null;
 let connectionStatus = 'disconnected';
 let retryCount = 0;
 
+// DAT-247: Deduplicacion de mensajes para evitar ghost messages
+const processedMessages = new Map();
+const DEDUP_TTL_MS = 60000; // 60 segundos
+
+function isProcessed(msgId) {
+	if (processedMessages.has(msgId)) return true;
+	processedMessages.set(msgId, Date.now());
+	// Limpiar entradas expiradas
+	if (processedMessages.size > 500) {
+		const now = Date.now();
+		for (const [id, ts] of processedMessages) {
+			if (now - ts > DEDUP_TTL_MS) processedMessages.delete(id);
+		}
+	}
+	return false;
+}
+
 /**
  * Elimina el directorio de sesion para forzar nueva vinculacion QR.
  */
@@ -110,6 +127,9 @@ async function connectWhatsApp() {
 	});
 
 	sock.ev.on('messages.upsert', async (upsert) => {
+		// DAT-247: Solo procesar mensajes nuevos (notify), ignorar historial (append)
+		if (upsert.type && upsert.type !== 'notify') return;
+
 		const messages = upsert.messages || upsert;
 		const msgArray = Array.isArray(messages) ? messages : [messages];
 
@@ -118,12 +138,28 @@ async function connectWhatsApp() {
 			if (msg.key.fromMe) continue;
 			if (msg.key.remoteJid === 'status@broadcast') continue;
 
+			// DAT-247: Deduplicacion por message_id
+			if (isProcessed(msg.key.id)) {
+				console.log(`  (omitido: mensaje duplicado ${msg.key.id})`);
+				continue;
+			}
+
 			const jid = msg.key.remoteJid;
-			let normalizedMessage = msg.message?.ephemeralMessage?.message 
+			let normalizedMessage = msg.message?.ephemeralMessage?.message
 				|| msg.message?.viewOnceMessage?.message
 				|| msg.message?.viewOnceMessageV2?.message
 				|| msg.message?.documentWithCaptionMessage?.message
 				|| msg.message;
+
+			// DAT-247: Filtrar mensajes de protocolo y reacciones
+			if (normalizedMessage?.protocolMessage
+				|| normalizedMessage?.reactionMessage
+				|| normalizedMessage?.editedMessage
+				|| normalizedMessage?.pollCreationMessage
+				|| normalizedMessage?.pollUpdateMessage
+				|| normalizedMessage?.stickerMessage) {
+				continue;
+			}
 
 			let text = normalizedMessage?.conversation
 				|| normalizedMessage?.extendedTextMessage?.text

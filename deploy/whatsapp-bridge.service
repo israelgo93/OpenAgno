@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenAgno WhatsApp QR Bridge (Baileys)
+After=network.target openagno.service
+Documentation=https://github.com/israelgo93/OpenAgno
+PartOf=openagno.service
+
+[Service]
+Type=simple
+# --- Ajusta estos valores a tu instalacion ---
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Proyectos/OpenAgno/bridges/whatsapp-qr
+Environment=GATEWAY_URL=http://localhost:8000
+Environment=SESSION_DIR=/home/ubuntu/Proyectos/OpenAgno/bridges/whatsapp-qr/session
+Environment=BRIDGE_PORT=3001
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/ubuntu/Proyectos/OpenAgno/bridges/whatsapp-qr/bridge.log
+StandardError=append:/home/ubuntu/Proyectos/OpenAgno/bridges/whatsapp-qr/bridge.log
+
+[Install]
+WantedBy=multi-user.target

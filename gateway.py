@@ -90,8 +90,8 @@ if fallback_model:
 	)
 
 
-# Referencia directa a arun sin wrapper, para usar en QR bridge
-_qr_direct_arun = main_agent.arun
+# Default: arun sin wrapper (se sobreescribe si hay STT/TTS/Fallback)
+_qr_agent_arun = main_agent.arun
 
 # === Wrapper inteligente de arun: STT + TTS + Fallback automatico ===
 audio_config = config.get("audio", {})
@@ -251,6 +251,9 @@ if _needs_stt or _needs_tts or fallback_model:
 		features.append(f"Fallback:{fallback_model.id}")
 	logger.info(f"Agent wrapper activado: [{', '.join(features)}]")
 
+# Referencia para QR bridge: DESPUES del wrapper para que audio/images pasen por STT
+_qr_agent_arun = main_agent.arun
+
 
 async def _auto_ingest_knowledge() -> None:
 	"""Ingesta automatica de documentos y URLs al arrancar."""
@@ -352,7 +355,9 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 
 	@app.post("/whatsapp-qr/incoming")
 	async def wa_qr_incoming(request: dict):
-		"""Recibe mensajes del bridge y los procesa con el agente."""
+		"""Recibe mensajes del bridge y los procesa con el agente (DAT-246)."""
+		from agno.media import Audio as AgnoAudio, Image as AgnoImage
+
 		from_jid = request.get("from", "")
 		text = request.get("text", "")
 		msg_type = request.get("type", "text")
@@ -365,6 +370,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 		logger.info(f"QR Bridge mensaje de {from_jid}: {text[:80]} (tipo: {msg_type})")
 
 		try:
+			# Decodificar media base64 si existe
 			media_bytes = None
 			if media_b64:
 				import base64
@@ -373,15 +379,38 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				except Exception as e:
 					logger.error(f"Error decodificando media b64: {e}")
 
-			# Llamar al agente directamente via _qr_direct_arun
-			response = await _qr_direct_arun(
-				text,
-				user_id=from_jid,
-				session_id=from_jid,
-				media_bytes=media_bytes,
-				msg_type=msg_type,
-				mime_type=mime_type,
-			)
+			# Construir kwargs validos para Agno Agent.arun
+			arun_kwargs: dict = {
+				"user_id": from_jid,
+				"session_id": from_jid,
+			}
+
+			if media_bytes and msg_type == "audio":
+				arun_kwargs["audio"] = [AgnoAudio(
+					content=media_bytes,
+					mime_type=mime_type or "audio/ogg",
+				)]
+				if not text or text.startswith("["):
+					text = "[Audio recibido]"
+				logger.info(f"QR Bridge audio preparado: {len(media_bytes)} bytes, mime={mime_type}")
+
+			elif media_bytes and msg_type == "image":
+				arun_kwargs["images"] = [AgnoImage(
+					content=media_bytes,
+					mime_type=mime_type or "image/jpeg",
+				)]
+				if not text or text.startswith("["):
+					text = "Describe o analiza esta imagen"
+				logger.info(f"QR Bridge imagen preparada: {len(media_bytes)} bytes, mime={mime_type}")
+
+			elif media_bytes and msg_type in ("document", "video"):
+				# Documentos y videos: informar al agente sin adjuntar
+				if not text or text.startswith("["):
+					text = f"[{msg_type} recibido — tipo: {mime_type}]"
+				logger.info(f"QR Bridge {msg_type} recibido pero no procesable como media directa")
+
+			# Usar arun wrapped (con STT/TTS/Fallback) via _qr_agent_arun
+			response = await _qr_agent_arun(text, **arun_kwargs)
 
 			# Extraer texto de la respuesta de forma segura
 			response_text = None
@@ -389,7 +418,6 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				if hasattr(response, 'content') and response.content is not None:
 					response_text = str(response.content)
 				elif hasattr(response, 'messages') and response.messages:
-					# Fallback: tomar el ultimo mensaje del asistente
 					for msg in reversed(response.messages):
 						role = getattr(msg, 'role', '')
 						content = getattr(msg, 'content', None)
@@ -414,7 +442,6 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 			return {"status": "responded"}
 		except Exception as e:
 			logger.error(f"Error procesando mensaje QR de {from_jid}: {type(e).__name__}: {e}")
-			# Enviar mensaje de error amigable al usuario en lugar de silenciar
 			try:
 				async with httpx.AsyncClient(timeout=10) as client:
 					await client.post(f"{bridge_url}/send", json={
