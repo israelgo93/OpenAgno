@@ -63,6 +63,8 @@ class WorkspaceTools(Toolkit):
 
     def read_workspace_file(self, filename: str) -> str:
         """Lee un archivo del workspace. Ej: 'config.yaml', 'instructions.md'."""
+        if filename.startswith("workspace/"):
+            filename = filename[10:]
         path = WORKSPACE_DIR / filename
         if not path.exists():
             return f"Error: {filename} no existe"
@@ -72,6 +74,8 @@ class WorkspaceTools(Toolkit):
 
     def write_workspace_file(self, filename: str, content: str) -> str:
         """Escribe en workspace/. Crea backup automaticamente."""
+        if filename.startswith("workspace/"):
+            filename = filename[10:]
         path = WORKSPACE_DIR / filename
         if not path.resolve().is_relative_to(WORKSPACE_DIR.resolve()):
             return "Error: ruta fuera del workspace"

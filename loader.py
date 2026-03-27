@@ -34,6 +34,7 @@ from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.vectordb.pgvector import PgVector, SearchType
 from agno.memory import MemoryManager
 from agno.tools.mcp import MCPTools
+from mcp import StdioServerParameters
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.crawl4ai import Crawl4aiTools
 from agno.tools.reasoning import ReasoningTools
@@ -454,11 +455,14 @@ def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
 			env = {**os.environ, **_resolve_config(server.get("env", {}))}
 
 			try:
-				mcp_tool = MCPTools(
-					transport="stdio",
+				server_params = StdioServerParameters(
 					command=command,
 					args=args,
 					env=env,
+				)
+				mcp_tool = MCPTools(
+					transport="stdio",
+					server_params=server_params,
 				)
 				mcp_tools.append(mcp_tool)
 				logger.info(f"MCP '{name}' (stdio): {command}")
