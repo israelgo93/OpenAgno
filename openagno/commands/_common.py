@@ -7,23 +7,15 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import Any
 
 import typer
 import yaml
+from rich.console import Console
 
-from openagno.commands._output import console
-from openagno.core.process_utils import detached_process_kwargs
-
-
-@dataclass
-class ScriptResult:
-    returncode: int
-    stdout: str
-    stderr: str
+console = Console()
 
 
 def project_root() -> Path:
@@ -38,7 +30,7 @@ def workspace_dir(root: Path | None = None) -> Path:
 def ensure_workspace_exists(root: Path | None = None) -> Path:
 	ws = workspace_dir(root)
 	if not ws.exists():
-		console.print("[red]Workspace not found. Run `openagno init` first.[/red]")
+		console.print("[red]Workspace no encontrado. Ejecuta `openagno init` primero.[/red]")
 		raise typer.Exit(code=1)
 	return ws
 
@@ -68,7 +60,7 @@ def get_template_definition(template_id: str) -> dict[str, Any]:
 	for template in read_template_registry():
 		if template.get("id") == template_id:
 			return template
-	console.print(f"[red]Template not found: {template_id}[/red]")
+	console.print(f"[red]Template no encontrado: {template_id}[/red]")
 	raise typer.Exit(code=1)
 
 
@@ -78,7 +70,7 @@ def copy_template_workspace(template_id: str, root: Path, force: bool = False) -
 
 	if target_workspace.exists() and any(target_workspace.iterdir()) and not force:
 		console.print(
-			f"[red]Target workspace already exists at {target_workspace}. Use --force to overwrite.[/red]"
+			f"[red]El workspace destino ya existe en {target_workspace}. Usa --force para sobrescribir.[/red]"
 		)
 		raise typer.Exit(code=1)
 
@@ -89,6 +81,7 @@ def copy_template_workspace(template_id: str, root: Path, force: bool = False) -
 	with as_file(template_resource) as template_path:
 		shutil.copytree(template_path, target_workspace, dirs_exist_ok=True)
 
+	console.print(f"[green]Template '{template_id}' copiado en {target_workspace}[/green]")
 	return target_workspace
 
 
@@ -151,8 +144,8 @@ def run_python_script(script_name: str, args: list[str], root: Path, detach: boo
 			cwd=str(root),
 			stdout=subprocess.DEVNULL,
 			stderr=subprocess.DEVNULL,
+			start_new_session=True,
 			env={**os.environ, "OPENAGNO_ROOT": str(root)},
-			**detached_process_kwargs(),
 		)
 		return process.pid
 
@@ -165,26 +158,9 @@ def run_python_script(script_name: str, args: list[str], root: Path, detach: boo
 	return result.returncode
 
 
-def run_python_script_capture(script_name: str, args: list[str], root: Path) -> ScriptResult:
-	command = [sys.executable, script_name, *args]
-	result = subprocess.run(
-		command,
-		cwd=str(root),
-		env={**os.environ, "OPENAGNO_ROOT": str(root)},
-		capture_output=True,
-		text=True,
-		check=False,
-	)
-	return ScriptResult(
-		returncode=result.returncode,
-		stdout=result.stdout.strip(),
-		stderr=result.stderr.strip(),
-	)
-
-
 def tail_file(path: Path, follow: bool = False, lines: int = 80) -> None:
 	if not path.exists():
-		console.print(f"[yellow]Log file not found: {path}[/yellow]")
+		console.print(f"[yellow]Log no encontrado: {path}[/yellow]")
 		raise typer.Exit(code=1)
 
 	content = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -194,7 +170,7 @@ def tail_file(path: Path, follow: bool = False, lines: int = 80) -> None:
 	if not follow:
 		return
 
-	console.print("[dim]Following logs. Press Ctrl+C to exit.[/dim]")
+	console.print("[dim]Siguiendo logs. Presiona Ctrl+C para salir.[/dim]")
 	last_size = path.stat().st_size
 	try:
 		while True:
@@ -208,4 +184,4 @@ def tail_file(path: Path, follow: bool = False, lines: int = 80) -> None:
 					console.print(line.rstrip("\n"))
 			last_size = current_size
 	except KeyboardInterrupt:
-		console.print("\n[dim]Stopped following logs.[/dim]")
+		console.print("\n[dim]Logs finalizados.[/dim]")

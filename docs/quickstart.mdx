@@ -1,17 +1,117 @@
 ---
-title: Inicio rapido
-description: Instalar OpenAgno desde el repo, crear un workspace y levantar el runtime por la ruta vigente.
+title: Quickstart / Inicio rápido
+description: Install OpenAgno, create a workspace, and start the runtime. Includes source-install guidance and the PyPI-ready path.
 ---
 
-OpenAgno hoy se instala **desde el repositorio**. La publicación a PyPI sigue en preparación para maintainers, así que la ruta pública recomendada continúa siendo `pip install -e .`.
+OpenAgno is release-ready as a Python package, but the safest installation path is still source-based until the `openagno` package is visible in the Python index you use. If `pip install openagno` is already available in your environment, you can use it. Otherwise, install from source with the steps below.
 
-## Requisitos
+## English
 
-- Python 3.10 o superior. Python 3.11+ es la opción recomendada.
+### Requirements
+
+- Python 3.10 or newer. Python 3.11+ is recommended.
+- PostgreSQL with `pgvector` if you want vector knowledge.
+- Node.js 18+ only if you will use WhatsApp QR or run Mintlify locally.
+
+### Public package path
+
+```bash
+pip install openagno
+```
+
+If that package is not yet available in your mirror or index, use the source path:
+
+### Source path
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+### Contributor path
+
+If you also want tests, builds, AG-UI, or A2A:
+
+```bash
+pip install -e '.[dev,protocols]'
+```
+
+To prepare a local package build:
+
+```bash
+python -m build
+```
+
+### Explore templates
+
+```bash
+openagno templates list
+openagno templates show personal_assistant
+```
+
+### Complete `.env`
+
+Common variables:
+
+- `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
+- `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
+- `TELEGRAM_TOKEN`
+- `OPENAGNO_API_KEY` if you want to protect custom routes
+
+### Recommended startup
+
+Foreground:
+
+```bash
+openagno init --template personal_assistant
+openagno validate
+openagno start --foreground
+```
+
+Supervisor:
+
+```bash
+openagno start
+openagno status
+openagno logs --follow
+```
+
+### Health check
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+### Practical notes
+
+- If you choose `database.type: sqlite`, OpenAgno still runs, but without vector knowledge.
+- Slack and Telegram are part of the base installation.
+- `agui` and `a2a` require `pip install -e '.[protocols]'`.
+- For local WhatsApp Cloud API work, review [/whatsapp-tunnel](/whatsapp-tunnel).
+- For a no-code path, read [/getting-started-no-code](/getting-started-no-code).
+
+## Español
+
+OpenAgno ya está preparado para liberarse como paquete Python, pero la ruta más segura sigue siendo instalar desde código fuente hasta que `openagno` aparezca en el índice PyPI o mirror que uses. Si `pip install openagno` ya resuelve en tu entorno, puedes usarlo; si no, sigue la ruta desde el repositorio.
+
+### Requisitos
+
+- Python 3.10 o superior. Python 3.11+ recomendado.
 - PostgreSQL con `pgvector` si quieres knowledge vectorial.
 - Node.js 18+ solo si usarás WhatsApp QR o validar Mintlify localmente.
 
-## Ruta rápida
+### Ruta pública
+
+```bash
+pip install openagno
+```
+
+### Ruta desde código fuente
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
@@ -23,65 +123,3 @@ openagno init --template personal_assistant
 openagno validate
 openagno start --foreground
 ```
-
-## Ruta para contributors o maintainers
-
-Si además vas a correr tests, preparar builds o habilitar AG-UI/A2A:
-
-```bash
-pip install -e '.[dev,protocols]'
-```
-
-Para preparar un build local del paquete:
-
-```bash
-python -m build
-```
-
-## Explora templates disponibles
-
-```bash
-openagno templates list
-openagno templates show personal_assistant
-```
-
-## Completa `.env`
-
-Variables comunes:
-
-- `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-- `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
-- `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
-- `TELEGRAM_TOKEN`
-- `OPENAGNO_API_KEY` si quieres proteger rutas custom
-
-## Arranque recomendado
-
-Foreground:
-
-```bash
-openagno start --foreground
-```
-
-Supervisor local:
-
-```bash
-openagno start
-openagno status
-openagno logs --follow
-```
-
-## Verifica salud
-
-```bash
-curl http://127.0.0.1:8000/admin/health
-```
-
-## Notas prácticas
-
-- Si eliges `database.type: sqlite`, OpenAgno corre, pero sin knowledge vectorial.
-- Slack y Telegram forman parte de la instalación base del proyecto.
-- `agui` y `a2a` requieren `pip install -e '.[protocols]'`.
-- Si vas a usar WhatsApp Cloud API en local, revisa la guía de túneles en [/whatsapp-tunnel](/whatsapp-tunnel).
-- Si prefieres un flujo sin editar código, sigue la guía de [/getting-started-no-code](/getting-started-no-code).

@@ -1,7 +1,9 @@
 """
-Workspace validator usado por `openagno validate` y por los chequeos previos al arranque.
+Validator - Valida el workspace/ antes de arrancar el gateway.
 
-Desde codigo:
+Uso:
+	python -m management.validator
+	# o desde codigo:
 	from management.validator import validate_workspace
 	errors = validate_workspace()
 """
@@ -311,20 +313,20 @@ def workspace_warnings(workspace_dir: Optional[str] = None) -> list[str]:
 def print_validation(errors: list[str]) -> None:
 	"""Imprime resultados de validacion con formato."""
 	if not errors:
-		print("\nWorkspace valid - ready to start")
+		print("\nWorkspace valido - listo para arrancar")
 		return
 
-	print(f"\nFound {len(errors)} workspace error(s):\n")
+	print(f"\nSe encontraron {len(errors)} error(es) en el workspace:\n")
 	for i, error in enumerate(errors, 1):
 		print(f"  {i}. {error}")
 	print()
-	print("Fix these errors before starting OpenAgno.")
-	print("Tip: run `openagno init --template personal_assistant` to regenerate the workspace.")
+	print("Corrige estos errores antes de ejecutar gateway.py")
+	print("Tip: ejecuta 'python -m management.cli' para regenerar el workspace")
 
 
 if __name__ == "__main__":
 	errors = validate_workspace()
 	print_validation(errors)
 	for w in workspace_warnings():
-		print(f"  Warning: {w}")
+		print(f"  Advertencia: {w}")
 	sys.exit(1 if errors else 0)

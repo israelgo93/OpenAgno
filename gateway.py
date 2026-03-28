@@ -34,6 +34,10 @@ from agno.utils.log import logger
 from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS
 from management.validator import print_validation, validate_workspace, workspace_warnings
 from openagno.core.dedup import MessageDeduplicator
+from openagno.core.tenant import TenantStore
+from openagno.core.tenant_middleware import TenantMiddleware
+from openagno.core.workspace_store import WorkspaceStore
+from openagno import __version__
 
 validation_errors = validate_workspace()
 if validation_errors:
@@ -472,7 +476,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 
 base_app = FastAPI(
 	title=config.get("agentos", {}).get("name", "AgnoBot Platform"),
-	version="1.0.0",
+	version=__version__,
 	lifespan=lifespan,
 )
 base_app.state.limiter = limiter
@@ -484,6 +488,7 @@ base_app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+base_app.add_middleware(TenantMiddleware)
 
 # === Middleware: dedup WhatsApp webhooks por message ID ===
 # Meta re-entrega webhooks si el servidor estuvo caido o demoro en responder.
@@ -611,6 +616,13 @@ if knowledge:
 	knowledge_router = create_knowledge_router(knowledge, limiter=limiter)
 	base_app.include_router(knowledge_router)
 
+tenant_store = TenantStore(ws["db_url"])
+workspace_store = WorkspaceStore(
+	backend=os.getenv("OPENAGNO_WORKSPACE_STORE_BACKEND", "local"),
+)
+base_app.state.tenant_store = tenant_store
+base_app.state.workspace_store = workspace_store
+
 interfaces = []
 channels = config.get("channels", ["whatsapp"])
 
@@ -690,11 +702,15 @@ if studio_config.get("enabled", True) and not ws["db_url"].startswith("sqlite"):
 	logger.info(f"Studio Registry configurado con {len(registry_tools)} tools")
 
 all_agents = [main_agent] + sub_agents
+agents_by_id = {agent.id: agent for agent in all_agents if getattr(agent, "id", None)}
 logger.info(f"Agentes cargados: {[a.id for a in all_agents]}")
 if teams:
 	logger.info(f"Teams cargados: {[t.id for t in teams]}")
 if schedules:
 	logger.info(f"Schedules cargados: {[s['name'] for s in schedules]}")
+
+from routes.tenant_routes import create_tenant_router
+base_app.include_router(create_tenant_router(tenant_store, workspace_store, agents_by_id))
 
 os_config = config.get("agentos", {})
 scheduler_cfg = config.get("scheduler", {})
@@ -791,7 +807,7 @@ async def admin_health(request: Request):
 	audio_info = config.get("audio", {})
 	return {
 		"status": "healthy",
-		"version": "1.0.0",
+		"version": __version__,
 		"agents": [a.id for a in all_agents],
 		"teams": [t.id for t in teams] if teams else [],
 		"channels": config.get("channels", []),
@@ -800,6 +816,11 @@ async def admin_health(request: Request):
 		"scheduler": scheduler_cfg.get("enabled", False),
 		"scheduler_base_url": _scheduler_kwargs.get("scheduler_base_url", "NOT SET"),
 		"whatsapp_auth": "expired" if _wa_auth_failed else "ok",
+		"tenancy": {
+			"enabled": True,
+			"workspace_backend": workspace_store.backend,
+			"tenant_header": "X-Tenant-ID",
+		},
 	}
 
 

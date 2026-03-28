@@ -1,8 +1,12 @@
 """
-OpenAgno local supervisor helper.
+OpenAgno Service Manager — Gateway como servicio en segundo plano.
+El agente puede solicitar reload sin matarse a si mismo.
 
-Este modulo se invoca desde `openagno start`, `openagno stop`,
-`openagno restart` y `openagno status` para manejar el gateway en background.
+Uso:
+  python service_manager.py start
+  python service_manager.py stop
+  python service_manager.py restart
+  python service_manager.py status
 """
 import os
 import sys
@@ -12,13 +16,6 @@ import subprocess
 import threading
 from pathlib import Path
 from dotenv import load_dotenv
-
-from openagno.core.process_utils import (
-	IS_WINDOWS,
-	is_pid_running,
-	read_pid_file,
-	terminate_pid,
-)
 
 load_dotenv()
 
@@ -86,10 +83,7 @@ class GatewayDaemon:
 				PID_FILE.unlink()
 			return
 		pid = self.process.pid
-		if IS_WINDOWS:
-			self.process.terminate()
-		else:
-			self.process.send_signal(signal.SIGTERM)
+		self.process.send_signal(signal.SIGTERM)
 		try:
 			self.process.wait(timeout=timeout)
 		except subprocess.TimeoutExpired:
@@ -153,8 +147,7 @@ class GatewayDaemon:
 			self.stop_gateway()
 			sys.exit(0)
 
-		if hasattr(signal, "SIGTERM"):
-			signal.signal(signal.SIGTERM, _shutdown)
+		signal.signal(signal.SIGTERM, _shutdown)
 		signal.signal(signal.SIGINT, _shutdown)
 		try:
 			while not self._stop_event.is_set():
@@ -165,22 +158,28 @@ class GatewayDaemon:
 
 def _kill_existing() -> bool:
 	"""Detiene el proceso existente si hay PID file."""
-	pid = read_pid_file(PID_FILE)
-	if pid is None:
+	if not PID_FILE.exists():
 		return False
-	if not is_pid_running(pid):
+	try:
+		pid = int(PID_FILE.read_text().strip())
+		os.kill(pid, signal.SIGTERM)
+		for _ in range(10):
+			try:
+				os.kill(pid, 0)
+				time.sleep(1)
+			except ProcessLookupError:
+				break
+		PID_FILE.unlink(missing_ok=True)
+		print(f"[daemon] Proceso anterior detenido (PID {pid})")
+		return True
+	except (ProcessLookupError, ValueError):
 		PID_FILE.unlink(missing_ok=True)
 		return False
-	stopped = terminate_pid(pid)
-	PID_FILE.unlink(missing_ok=True)
-	if stopped:
-		print(f"[daemon] Proceso anterior detenido (PID {pid})")
-	return stopped
 
 
 def main() -> None:
 	if len(sys.argv) < 2:
-		print("Usa: openagno start | openagno stop | openagno restart | openagno status")
+		print("Uso: python service_manager.py [start|stop|restart|status]")
 		sys.exit(1)
 
 	cmd = sys.argv[1]
@@ -198,11 +197,16 @@ def main() -> None:
 			GatewayDaemon().run()
 		case "status":
 			daemon = GatewayDaemon()
-			pid = read_pid_file(PID_FILE)
-			pid_display = str(pid) if pid is not None else "N/A"
+			pid = PID_FILE.read_text().strip() if PID_FILE.exists() else "N/A"
 			healthy = daemon.health_check()
-			running = is_pid_running(pid) if pid is not None else False
-			print(f"PID: {pid_display} | Proceso: {'ACTIVO' if running else 'INACTIVO'} | Health: {'OK' if healthy else 'FAIL'}")
+			running = False
+			if pid != "N/A":
+				try:
+					os.kill(int(pid), 0)
+					running = True
+				except (ProcessLookupError, ValueError):
+					pass
+			print(f"PID: {pid} | Proceso: {'ACTIVO' if running else 'INACTIVO'} | Health: {'OK' if healthy else 'FAIL'}")
 			if healthy:
 				try:
 					import urllib.request

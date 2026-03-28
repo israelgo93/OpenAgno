@@ -7,7 +7,8 @@
 	},
 	"scripts": {
 		"dev": "mintlify dev",
-		"broken-links": "mintlify broken-links"
+		"broken-links": "mintlify broken-links",
+		"validate": "mintlify validate"
 	},
 	"devDependencies": {
 		"mintlify": "^4.2.459"

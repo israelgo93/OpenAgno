@@ -1,6 +1,6 @@
 ---
 title: CLI
-description: Comandos soportados por la CLI `openagno`, su salida esperada y el alcance real de cada flujo.
+description: Comandos soportados por la CLI `openagno` y alcance real de cada flujo.
 ---
 
 La ruta de operación documentada para OpenAgno es:
@@ -8,8 +8,6 @@ La ruta de operación documentada para OpenAgno es:
 ```bash
 openagno <comando>
 ```
-
-El wizard heredado sigue existiendo solo como bridge interno de compatibilidad y no forma parte del flujo documentado para usuarios.
 
 ## Comandos principales
 
@@ -40,37 +38,6 @@ El wizard heredado sigue existiendo solo como bridge interno de compatibilidad y
 | `openagno deploy docker` | Levantar stack local con Docker Compose |
 | `openagno deploy local` | Alias del supervisor local |
 
-## Salida esperada
-
-La CLI usa un patrón consistente: **header + pasos + next step**.
-
-### `openagno init --template personal_assistant`
-
-```text
-Initializing OpenAgno...
-    Copying template `personal_assistant` into `/path/to/workspace`
-    ✔ Workspace initialized from packaged template.
-    → Next: Fill in `.env`, then run `openagno validate`.
-```
-
-### `openagno add slack`
-
-```text
-Updating workspace...
-    Adding Slack channel
-    ✔ Slack channel added.
-    → Next: Set `SLACK_TOKEN` and `SLACK_SIGNING_SECRET` in `.env`.
-```
-
-### `openagno start`
-
-```text
-Starting OpenAgno...
-    Launching the local supervisor in background.
-    ✔ Supervisor started in background with PID 12345.
-    → Next: Run `openagno status` or `openagno logs --follow`.
-```
-
 ## Ejemplo completo
 
 ```bash
@@ -86,5 +53,4 @@ openagno start --foreground
 
 - `openagno deploy aws` todavía no provisiona infraestructura.
 - La CLI trabaja sobre `OPENAGNO_ROOT/workspace`.
-- Si usas supervisor, los logs quedan en `gateway.log`.
-- `openagno init` sin template sigue lanzando el wizard interactivo de compatibilidad.
+- Si usas el supervisor, los logs quedan en `gateway.log`.

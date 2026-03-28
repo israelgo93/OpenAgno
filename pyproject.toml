@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openagno"
-version = "1.1.0"
+version = "1.2.0"
 description = "Build autonomous AI agents with declarative YAML configuration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,11 +46,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "build>=1.2.2",
   "pytest>=8.0.0",
   "pytest-asyncio>=0.23.0",
   "pytest-cov>=4.0.0",
-  "twine>=5.1.1",
 ]
 protocols = [
   "a2a-sdk>=0.3.25",

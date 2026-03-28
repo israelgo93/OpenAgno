@@ -30,7 +30,6 @@ def test_init_from_template(tmp_path: Path):
         ["init", "--template", "personal_assistant", "--directory", str(tmp_path)],
     )
     assert result.exit_code == 0
-    assert "Workspace initialized from packaged template." in result.stdout
     assert (tmp_path / "workspace" / "config.yaml").exists()
 
 
@@ -41,7 +40,6 @@ def test_add_agui_updates_workspace(tmp_path: Path):
     )
     result = runner.invoke(app, ["add", "agui"], env={"OPENAGNO_ROOT": str(tmp_path)})
     assert result.exit_code == 0
-    assert "AG-UI channel added." in result.stdout
     config = yaml.safe_load((tmp_path / "workspace" / "config.yaml").read_text())
     assert "agui" in config["channels"]
 
@@ -53,6 +51,5 @@ def test_add_a2a_updates_workspace(tmp_path: Path):
     )
     result = runner.invoke(app, ["add", "a2a"], env={"OPENAGNO_ROOT": str(tmp_path)})
     assert result.exit_code == 0
-    assert "A2A protocol enabled." in result.stdout
     config = yaml.safe_load((tmp_path / "workspace" / "config.yaml").read_text())
     assert config["a2a"]["enabled"] is True

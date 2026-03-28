@@ -1,12 +1,23 @@
 """
-Legacy onboarding bridge mantenido solo por compatibilidad interna.
+CLI de Onboarding v6 - Setup, diagnostico, reconfiguracion y chat interactivo.
 
-Flujo publico:
-	openagno init
-	openagno --help
+Comandos:
+	python -m management.cli              # Setup wizard (genera workspace + .env)
+	python -m management.cli chat         # Chat interactivo con el agente
+	python -m management.cli doctor       # Diagnostica y repara problemas
+	python -m management.cli configure    # Reconfigura una seccion especifica
+	python -m management.cli fallback     # Configura modelo fallback
+	python -m management.cli audio        # Configura audio (STT/TTS)
+	python -m management.cli status       # Estado del sistema
 
-Este modulo sigue existiendo porque `openagno init` sin template reutiliza
-la implementacion historica del wizard interactivo.
+Genera:
+	workspace/config.yaml
+	workspace/instructions.md
+	workspace/tools.yaml
+	workspace/mcp.yaml
+	workspace/knowledge/urls.yaml
+	workspace/agents/teams.yaml
+	.env
 """
 import warnings
 warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
@@ -83,13 +94,6 @@ def _print_banner(mini: bool = False) -> None:
 		print(f"\n  {BANNER_MINI}\n")
 	else:
 		print(BANNER)
-
-
-def _print_deprecation_notice() -> None:
-	"""Warn when the legacy CLI is called directly."""
-	print(f"\n  {YELLOW}{BOLD}Legacy CLI notice{RESET}")
-	print(f"  {DIM}`python -m management.cli` is deprecated and kept for compatibility only.{RESET}")
-	print(f"  Use {BOLD}openagno init{RESET} for setup and {BOLD}openagno --help{RESET} for day-to-day commands.\n")
 
 
 def _styled(text: str, style: str = DIM) -> str:
@@ -997,7 +1001,7 @@ def run_doctor() -> None:
 	print()
 	if fixes_applied:
 		print(f"  Se aplicaron {fixes_applied} reparacion(es)")
-	print(f"  Ejecuta 'openagno validate' para re-validar")
+	print(f"  Ejecuta 'python -m management.validator' para re-validar")
 	print("=" * 50)
 	print()
 
@@ -1062,7 +1066,7 @@ def _doctor_check_model(config: dict, env: dict) -> None:
 		print(f"  [INFO] Modelo fallback: {fallback.get('provider', provider)} / {fallback['id']}")
 	else:
 		print(f"  [WARN] Sin modelo fallback configurado (util para rate limits)")
-		print(f"         Ejecuta: openagno init o edita workspace/config.yaml")
+		print(f"         Ejecuta: python -m management.cli fallback")
 
 
 def _doctor_check_ssl() -> None:
@@ -1186,7 +1190,7 @@ def run_fallback() -> None:
 
 	print(f"\n  [OK] Fallback configurado: {fb_provider} / {fb_id}")
 	print(f"  Cuando el modelo principal falle (rate limit, error), se usara el fallback")
-	print(f"  Reinicia el gateway para aplicar: openagno restart")
+	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
 	print()
 
 
@@ -1203,7 +1207,7 @@ def run_configure() -> None:
 
 	config = _load_current_config()
 	if not config:
-		print("\n  No hay workspace configurado. Ejecuta: openagno init")
+		print("\n  No hay workspace configurado. Ejecuta: python -m management.cli")
 		return
 
 	choice = _prompt_choice("Que deseas reconfigurar?", {
@@ -1489,7 +1493,7 @@ def _configure_audio(config: dict) -> None:
 		_write_yaml(tools_path, tools)
 
 	print(f"\n  [OK] Audio actualizado: STT={'ON' if auto_transcribe else 'OFF'}, TTS={'ON' if tts_enabled else 'OFF'}")
-	print(f"  Reinicia el gateway para aplicar: openagno restart")
+	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
 
 
 # ==============================
@@ -1537,7 +1541,7 @@ def run_chat() -> None:
 	config = _load_current_config()
 	if not config:
 		print(f"\n  {_error('No hay workspace configurado.')}")
-		print(f"  Ejecuta: openagno init")
+		print(f"  Ejecuta: python -m management.cli")
 		return
 
 	agent_name = config.get("agent", {}).get("name", "AgnoBot")
@@ -1553,7 +1557,7 @@ def run_chat() -> None:
 		print(f"  {_success(f'Conectado a {agent_name} en {gateway_url}')}")
 	except Exception:
 		print(f"  {_warn(f'Gateway no detectado en {gateway_url}')}")
-		print(f"  Inicia primero: {BOLD}openagno start --foreground{RESET}")
+		print(f"  Inicia primero: {BOLD}python gateway.py{RESET}")
 		print()
 		if not _prompt_yn("Continuar de todos modos?"):
 			return
@@ -1720,7 +1724,6 @@ def run_status() -> None:
 def main() -> None:
 	"""Punto de entrada principal del CLI."""
 	args = sys.argv[1:]
-	_print_deprecation_notice()
 
 	if not args:
 		run_onboarding()
@@ -1744,7 +1747,7 @@ def main() -> None:
 			if config:
 				_configure_audio(config)
 			else:
-				print("  No hay workspace configurado. Ejecuta: openagno init")
+				print("  No hay workspace configurado. Ejecuta: python -m management.cli")
 		case "help" | "-h" | "--help":
 			_print_banner()
 			print(f"  ┌{'─' * 56}┐")
@@ -1764,11 +1767,11 @@ def main() -> None:
 				print(f"  │  {CYAN}{cmd:14s}{RESET} {desc:<39s}│")
 			print(f"  └{'─' * 56}┘")
 			print()
-			print(f"  {DIM}CLI publica: openagno --help{RESET}")
+			print(f"  {DIM}Uso: python -m management.cli [comando]{RESET}")
 			print()
 		case _:
 			print(f"  {_error(f'Comando desconocido: {command}')}")
-			print(f"  Ejecuta: openagno --help")
+			print(f"  Ejecuta: python -m management.cli help")
 
 
 if __name__ == "__main__":

@@ -42,8 +42,8 @@ echo
 echo "Upgrading pip..."
 python -m pip install --upgrade pip >/dev/null
 
-echo "Installing OpenAgno in editable mode..."
-python -m pip install -e . >/dev/null
+echo "Installing OpenAgno with developer and protocol extras..."
+python -m pip install -e '.[dev,protocols]' >/dev/null
 
 if [ ! -d "workspace" ]; then
     echo

@@ -18,8 +18,6 @@ description: Opciones reales de despliegue disponibles hoy en OpenAgno.
 openagno start --foreground
 ```
 
-Úsalo cuando quieras ver logs en tiempo real y depurar el runtime.
-
 ## Supervisor local
 
 ```bash
@@ -28,8 +26,6 @@ openagno status
 openagno logs --follow
 openagno stop
 ```
-
-El supervisor local funciona en Linux, macOS y Windows. En Windows usa el fallback nativo para arranque detached y parada por PID.
 
 ## systemd
 
@@ -40,8 +36,6 @@ sudo systemctl status openagno
 journalctl -u openagno -f
 ```
 
-`systemd` e `install-service.sh` siguen siendo **solo Linux**.
-
 ## Docker Compose
 
 ```bash
@@ -49,16 +43,6 @@ docker compose up -d db
 openagno deploy docker
 docker compose --profile qr up -d
 ```
-
-## PyPI y builds
-
-La publicación del paquete sigue en preparación. Hoy puedes validar el build localmente:
-
-```bash
-python -m build
-```
-
-Eso genera `sdist` y `wheel` para revisión del maintainer. La subida real a PyPI no forma parte del flujo público actual.
 
 ## Estado del despliegue AWS
 
