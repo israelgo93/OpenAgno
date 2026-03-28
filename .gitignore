@@ -56,6 +56,9 @@ bridges/whatsapp-qr/node_modules/
 bridges/whatsapp-qr/session/
 bridges/whatsapp-qr/package-lock.json
 
+# Mintlify (documentacion)
+docs/node_modules/
+
 # Cursor IDE
 .cursor/
 
