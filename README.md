@@ -1,5 +1,7 @@
 # OpenAgno
 
+[![PyPI version](https://badge.fury.io/py/openagno.svg)](https://pypi.org/project/openagno/)
+
 OpenAgno is a declarative agent platform built on **Agno**. It packages a CLI, an AgentOS/FastAPI runtime, reusable workspace templates, MCP support, channel integrations, vector knowledge with PgVector, and a tenant-aware provisioning layer for multi-tenant deployments.
 
 OpenAgno es una plataforma declarativa para agentes construida sobre **Agno**. Incluye una CLI empaquetada, runtime AgentOS/FastAPI, templates reutilizables, soporte MCP, canales, knowledge vectorial con PgVector y una capa tenant-aware para despliegues multi-tenant.
@@ -19,13 +21,11 @@ OpenAgno es una plataforma declarativa para agentes construida sobre **Agno**. I
 
 ### Installation
 
-If `openagno` is already available in your Python index, use:
-
 ```bash
 pip install openagno
 ```
 
-If not, install from source:
+Or install from source:
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
@@ -89,13 +89,11 @@ The runtime uses Agno-native isolation with `Knowledge(..., isolate_vector_searc
 
 ### Instalación
 
-Si `openagno` ya existe en tu índice Python, usa:
-
 ```bash
 pip install openagno
 ```
 
-Si todavía no aparece en tu índice o mirror, instala desde el repositorio:
+O instala desde el repositorio:
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
