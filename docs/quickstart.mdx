@@ -1,15 +1,27 @@
 ---
-title: Inicio rapido
-description: Instalar OpenAgno, crear un workspace usable y levantar el runtime por la ruta vigente.
+title: Quickstart / Inicio rápido
+description: Install OpenAgno, create a workspace, and start the runtime. Includes source-install guidance and the PyPI-ready path.
 ---
 
-## Requisitos
+OpenAgno is release-ready as a Python package, but the safest installation path is still source-based until the `openagno` package is visible in the Python index you use. If `pip install openagno` is already available in your environment, you can use it. Otherwise, install from source with the steps below.
 
-- Python 3.11 o superior
-- PostgreSQL con `pgvector` si quieres knowledge vectorial
-- Node.js 18+ solo si usarás WhatsApp QR o Mintlify local
+## English
 
-## 1. Instala el proyecto
+### Requirements
+
+- Python 3.10 or newer. Python 3.11+ is recommended.
+- PostgreSQL with `pgvector` if you want vector knowledge.
+- Node.js 18+ only if you will use WhatsApp QR or run Mintlify locally.
+
+### Public package path
+
+```bash
+pip install openagno
+```
+
+If that package is not yet available in your mirror or index, use the source path:
+
+### Source path
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
@@ -19,52 +31,49 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Si también vas a desarrollar o habilitar protocolos avanzados:
+### Contributor path
+
+If you also want tests, builds, AG-UI, or A2A:
 
 ```bash
 pip install -e '.[dev,protocols]'
 ```
 
-## 2. Explora templates disponibles
+To prepare a local package build:
+
+```bash
+python -m build
+```
+
+### Explore templates
 
 ```bash
 openagno templates list
+openagno templates show personal_assistant
 ```
 
-## 3. Crea tu workspace
+### Complete `.env`
 
-La ruta más simple es copiar un template:
-
-```bash
-openagno init --template personal_assistant
-```
-
-## 4. Completa `.env`
-
-Variables comunes:
+Common variables:
 
 - `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
 - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
 - `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
 - `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
 - `TELEGRAM_TOKEN`
-- `OPENAGNO_API_KEY` si quieres proteger rutas custom
+- `OPENAGNO_API_KEY` if you want to protect custom routes
 
-## 5. Valida antes de arrancar
-
-```bash
-openagno validate
-```
-
-## 6. Arranca el runtime
+### Recommended startup
 
 Foreground:
 
 ```bash
+openagno init --template personal_assistant
+openagno validate
 openagno start --foreground
 ```
 
-Supervisor local:
+Supervisor:
 
 ```bash
 openagno start
@@ -72,15 +81,45 @@ openagno status
 openagno logs --follow
 ```
 
-## 7. Verifica salud
+### Health check
 
 ```bash
 curl http://127.0.0.1:8000/admin/health
 ```
 
-## Notas prácticas
+### Practical notes
 
-- Si eliges `database.type: sqlite`, OpenAgno corre, pero sin knowledge vectorial.
-- Slack y Telegram ya forman parte de la instalación base.
-- `agui` y `a2a` requieren `pip install -e '.[protocols]'`.
-- Si vas a usar WhatsApp Cloud API en local, solo usa `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` en desarrollo.
+- If you choose `database.type: sqlite`, OpenAgno still runs, but without vector knowledge.
+- Slack and Telegram are part of the base installation.
+- `agui` and `a2a` require `pip install -e '.[protocols]'`.
+- For local WhatsApp Cloud API work, review [/whatsapp-tunnel](/whatsapp-tunnel).
+- For a no-code path, read [/getting-started-no-code](/getting-started-no-code).
+
+## Español
+
+OpenAgno ya está preparado para liberarse como paquete Python, pero la ruta más segura sigue siendo instalar desde código fuente hasta que `openagno` aparezca en el índice PyPI o mirror que uses. Si `pip install openagno` ya resuelve en tu entorno, puedes usarlo; si no, sigue la ruta desde el repositorio.
+
+### Requisitos
+
+- Python 3.10 o superior. Python 3.11+ recomendado.
+- PostgreSQL con `pgvector` si quieres knowledge vectorial.
+- Node.js 18+ solo si usarás WhatsApp QR o validar Mintlify localmente.
+
+### Ruta pública
+
+```bash
+pip install openagno
+```
+
+### Ruta desde código fuente
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+openagno init --template personal_assistant
+openagno validate
+openagno start --foreground
+```

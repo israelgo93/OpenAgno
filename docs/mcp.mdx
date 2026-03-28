@@ -1,16 +1,18 @@
 ---
-title: MCP
-description: Configurar servidores MCP en OpenAgno y entender como se resuelven en runtime.
+title: MCP / MCP e IDEs
+description: Configure MCP in OpenAgno and connect the public docs to AI IDEs and assistants.
 ---
 
-OpenAgno puede usar MCP en dos niveles:
+OpenAgno can use MCP in two layers:
 
-1. **Como cliente**, conectandose a servidores externos declarados en `workspace/mcp.yaml`.
-2. **Como servidor**, exponiendo el MCP embebido del runtime cuando `agentos.enable_mcp_server` esta activo.
+1. **As a client**, by connecting to external servers declared in `workspace/mcp.yaml`.
+2. **As a server**, by exposing the embedded runtime MCP endpoint when `agentos.enable_mcp_server` is enabled.
 
-## Cliente MCP
+## English
 
-Ejemplo:
+### MCP client
+
+Example:
 
 ```yaml
 servers:
@@ -32,27 +34,65 @@ expose:
   enabled: true
 ```
 
-## Que soporta el loader
+### What the loader supports
 
 - `streamable-http`
 - `sse`
 - `stdio`
-- variables `${VAR}` resueltas dentro de strings, listas y diccionarios
-- `env` por servidor en `stdio`
-- fusion con integraciones declarativas
+- `${VAR}` resolution inside strings, lists, and dictionaries
+- per-server `env` for `stdio`
+- declarative integration merging
 
-## Servidor MCP embebido
+### Embedded MCP server
 
-Cuando `agentos.enable_mcp_server` esta activo, AgentOS expone su propio MCP server junto con el resto de rutas del runtime.
+When `agentos.enable_mcp_server` is enabled, AgentOS exposes its own MCP server next to the runtime routes.
 
-Eso permite:
+That lets you:
 
-- conectar IDEs o clientes MCP externos,
-- usar Studio con el OS local,
-- exponer herramientas y contexto del runtime de forma controlada.
+- connect IDEs or external MCP clients
+- use Studio with the local OS
+- expose runtime tools and context in a controlled way
 
-## Recomendaciones
+### OpenAgno Docs as an MCP server
 
-- Usa `streamable-http` para servidores remotos cuando exista soporte oficial.
-- Usa `stdio` para servidores locales que requieran `npx` o binarios del entorno.
-- Si una integracion necesita sus propias credenciales, declara el servidor MCP dentro de `workspace/integrations/<id>/integration.yaml`.
+The public docs are already available as a remote MCP server at:
+
+```text
+https://docs.openagno.com/mcp
+```
+
+It also exposes AI-friendly indexes at:
+
+```text
+https://docs.openagno.com/llms.txt
+```
+
+### Connect from Claude Code
+
+```bash
+claude mcp add openagno https://docs.openagno.com/mcp
+```
+
+### Connect from Cursor or VS Code
+
+```bash
+npx mint-mcp add openagno https://docs.openagno.com/mcp
+```
+
+### Recommendations
+
+- Use `streamable-http` for remote servers when official support exists.
+- Use `stdio` for local servers that depend on `npx` or local binaries.
+- If an integration needs its own credentials, declare the MCP server under `workspace/integrations/<id>/integration.yaml`.
+- For IDE-specific setup, also review [/ide-integration](/ide-integration).
+
+## Español
+
+OpenAgno puede usar MCP como cliente y como servidor. Como cliente, consume servidores externos declarados en `workspace/mcp.yaml`. Como servidor, expone el MCP embebido del runtime cuando `agentos.enable_mcp_server` está activo.
+
+### Recomendaciones en español
+
+- Usa `streamable-http` para servidores remotos.
+- Usa `stdio` para servidores locales.
+- Declara credenciales con `${VAR}` desde `.env`.
+- Si vas a conectar IDEs, revisa también [/ide-integration](/ide-integration).

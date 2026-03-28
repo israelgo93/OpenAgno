@@ -1,0 +1,114 @@
+---
+title: No-code / Sin tocar código
+description: Guided setup for non-developers who want OpenAgno running locally without editing Python files.
+sidebarTitle: No-code
+---
+
+This guide is for people who want to run OpenAgno locally **without developing the framework itself**. You will download the repository, bootstrap the environment, and start from a ready-to-fill workspace.
+
+## English
+
+### What you need
+
+- Python 3.10 or newer
+- A basic terminal
+- Optional: PostgreSQL if you want vector knowledge
+
+### Step 1. Download the project
+
+You can use GitHub Desktop, a ZIP download, or `git clone`.
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+```
+
+### Step 2. Run the bootstrap
+
+```bash
+bash setup.sh
+```
+
+That script:
+
+- creates `.venv`
+- installs OpenAgno with development and protocol extras
+- initializes `workspace/` from `personal_assistant`
+- validates the workspace
+
+### Step 3. Complete `.env`
+
+Set at least:
+
+- one model API key (`GOOGLE_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`)
+- database variables if you will use PostgreSQL or Supabase
+- the channel variables for the channel you want to enable
+
+### Step 4. Start the runtime
+
+```bash
+openagno start --foreground
+```
+
+### Step 5. Check health
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+## Español
+
+Esta guía está pensada para personas que quieren usar OpenAgno localmente **sin desarrollar el framework**. Vas a descargar el repositorio, preparar el entorno y levantar un workspace listo para completar.
+
+### Qué necesitas
+
+- Python 3.10 o superior
+- Una terminal básica
+- Opcional: PostgreSQL si vas a usar knowledge vectorial
+
+### Paso 1. Descarga el proyecto
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+```
+
+### Paso 2. Ejecuta el bootstrap
+
+```bash
+bash setup.sh
+```
+
+Ese script:
+
+- crea `.venv`
+- instala OpenAgno con extras de desarrollo y protocolos
+- crea `workspace/` desde `personal_assistant`
+- valida que la base del workspace esté correcta
+
+### Paso 3. Completa `.env`
+
+Abre el archivo `.env` y define al menos:
+
+- una API key de modelo (`GOOGLE_API_KEY`, `OPENAI_API_KEY` o `ANTHROPIC_API_KEY`)
+- las variables de base de datos si usarás PostgreSQL/Supabase
+- las variables del canal que quieras activar
+
+### Paso 4. Arranca el runtime
+
+```bash
+openagno start --foreground
+```
+
+### Paso 5. Verifica salud
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+### Qué hacer después
+
+- Si vas a usar Slack, ejecuta `openagno add slack`.
+- Si vas a usar Telegram, ejecuta `openagno add telegram`.
+- Si vas a usar WhatsApp Cloud API en local, sigue [/whatsapp-tunnel](/whatsapp-tunnel).
+- Si prefieres el flujo técnico completo, vuelve a [/quickstart](/quickstart).

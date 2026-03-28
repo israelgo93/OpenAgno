@@ -291,6 +291,7 @@ def build_knowledge(
 	}
 
 	return Knowledge(
+		name=vector_config.get("name"),
 		vector_db=PgVector(
 			table_name=db_config.get("vector_table", "agnobot_knowledge_vectors"),
 			db_url=db_url,
@@ -304,6 +305,7 @@ def build_knowledge(
 		),
 		contents_db=db,
 		max_results=vector_config.get("max_results", 5),
+		isolate_vector_search=vector_config.get("isolate_vector_search", False),
 	)
 
 

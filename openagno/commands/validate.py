@@ -11,8 +11,18 @@ def validate_command() -> None:
 	"""Validate the current workspace."""
 	root = project_root()
 	ws = ensure_workspace_exists(root)
-	from management.validator import print_validation, validate_workspace
+	from management.validator import print_validation, validate_workspace, workspace_warnings
 
 	errors = validate_workspace(str(ws))
-	print_validation(errors)
-	raise typer.Exit(code=1 if errors else 0)
+	warnings = workspace_warnings(str(ws))
+	if errors:
+		print_validation(errors)
+		for warning in warnings:
+			typer.echo(f"Warning: {warning}")
+		typer.echo("Fix the validation errors, then run `openagno validate` again.")
+		raise typer.Exit(code=1)
+
+	typer.echo("Workspace is valid.")
+	for warning in warnings:
+		typer.echo(f"Warning: {warning}")
+	raise typer.Exit(code=0)

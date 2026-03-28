@@ -2,7 +2,7 @@
 	"$schema": "https://mintlify.com/docs.json",
 	"theme": "mint",
 	"name": "OpenAgno",
-	"description": "Plataforma para construir y operar agentes sobre Agno con workspace declarativo, CLI empaquetada, canales, knowledge base y MCP.",
+	"description": "Build and operate Agno-based agents with a declarative workspace, packaged CLI, multi-channel runtime, knowledge base, and MCP. Documentacion disponible en ingles y espanol.",
 	"colors": {
 		"primary": "#6366F1",
 		"light": "#818CF8",
@@ -24,7 +24,7 @@
 	"navigation": {
 		"groups": [
 			{
-				"group": "Introduccion",
+				"group": "Getting started",
 				"pages": [
 					"index",
 					"quickstart",
@@ -46,7 +46,7 @@
 				]
 			},
 			{
-				"group": "Operacion",
+				"group": "Operations",
 				"pages": [
 					"cli",
 					"studio",
@@ -56,14 +56,20 @@
 				]
 			},
 			{
-				"group": "Despliegue",
+				"group": "Deployment",
 				"pages": [
 					"deployment",
 					"structure"
 				]
 			},
 			{
-				"group": "Referencia",
+				"group": "Integrations",
+				"pages": [
+					"ide-integration"
+				]
+			},
+			{
+				"group": "Reference",
 				"pages": [
 					"reference"
 				]
@@ -71,7 +77,7 @@
 		]
 	},
 	"search": {
-		"prompt": "Buscar comandos, workspace, canales, knowledge, MCP o despliegue"
+		"prompt": "Search commands, workspace, channels, knowledge, MCP, tenants, or deployment. Tambien puedes buscar en espanol."
 	},
 	"footer": {
 		"socials": {

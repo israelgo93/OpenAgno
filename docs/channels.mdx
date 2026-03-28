@@ -1,40 +1,50 @@
 ---
-title: Canales
-description: Canales reales del runtime actual, sus requisitos y como habilitarlos.
+title: Channels / Canales
+description: Supported runtime channels, requirements, and local tunnel guidance for developers and operators.
 ---
 
-## Matriz rápida
+OpenAgno follows the interface surface currently exposed by Agno: WhatsApp, Slack, Telegram, AG-UI, and A2A. The `ai_sdk` channel is not part of the supported runtime path and should not be used in new configurations.
 
-| Canal o protocolo | Activación | Requisitos |
-|-------------------|------------|------------|
-| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | credenciales Meta |
-| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | bridge Node opcional |
+## English
+
+### Quick matrix
+
+| Channel or protocol | Activation | Requirements |
+|---------------------|------------|--------------|
+| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | Meta credentials |
+| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | Optional Node bridge |
 | Slack | `channels: [slack]` | `SLACK_TOKEN`, `SLACK_SIGNING_SECRET` |
 | Telegram | `channels: [telegram]` | `TELEGRAM_TOKEN` |
 | AG-UI | `channels: [agui]` | extra `.[protocols]` |
 | A2A | `a2a.enabled: true` | extra `.[protocols]` |
 
-## WhatsApp Cloud API
+### WhatsApp Cloud API
 
 ```bash
-WHATSAPP_ACCESS_TOKEN=tu_token
-WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
-WHATSAPP_VERIFY_TOKEN=tu_verify_token
-WHATSAPP_APP_SECRET=tu_app_secret
+WHATSAPP_ACCESS_TOKEN=your_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_id
+WHATSAPP_VERIFY_TOKEN=your_verify_token
+WHATSAPP_APP_SECRET=your_app_secret
 ```
 
-Rutas relevantes:
+Relevant routes:
 
 - `GET /whatsapp/webhook`
 - `POST /whatsapp/webhook`
 
-El runtime:
+### Local development without a domain
 
-- valida firma
-- deduplica por `message_id`
-- procesa payloads mixtos sin perder mensajes nuevos
+During local development you usually need a public tunnel for WhatsApp, Slack, or Telegram webhooks. In OpenAgno, the practical setup is documented in [/whatsapp-tunnel](/whatsapp-tunnel).
 
-## WhatsApp QR
+For controlled development without a real signature:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+Use that only in development.
+
+### WhatsApp QR
 
 ```yaml
 whatsapp:
@@ -49,45 +59,33 @@ npm install
 node index.js
 ```
 
-Rutas:
-
-- `/whatsapp-qr/status`
-- `/whatsapp-qr/code`
-- `/whatsapp-qr/code/json`
-- `/whatsapp-qr/incoming`
-
-## Slack
-
-Slack está soportado en la instalación base del proyecto.
+### Slack
 
 ```bash
-SLACK_TOKEN=xoxb-tu-token
-SLACK_SIGNING_SECRET=tu_signing_secret
+SLACK_TOKEN=xoxb-your-token
+SLACK_SIGNING_SECRET=your_signing_secret
 ```
 
-## Telegram
-
-Telegram también está incluido en la instalación base.
+### Telegram
 
 ```bash
-TELEGRAM_TOKEN=tu_token_de_botfather
+TELEGRAM_TOKEN=your_botfather_token
 ```
 
-## AG-UI y A2A
-
-Estos protocolos son compatibles con Agno 2.5.10, pero requieren extras:
+### AG-UI and A2A
 
 ```bash
 pip install -e '.[protocols]'
-```
-
-Luego:
-
-```bash
 openagno add agui
 openagno add a2a
 ```
 
-## Nota de compatibilidad
+## Español
 
-`ai_sdk` no forma parte del runtime compatible actual de OpenAgno y no debe usarse en nuevas configuraciones.
+OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actual: WhatsApp, Slack, Telegram, AG-UI y A2A. El canal `ai_sdk` no forma parte de la ruta compatible vigente y no debe usarse en nuevas configuraciones.
+
+### Compatibilidad
+
+- `slack` y `telegram` forman parte de las dependencias base.
+- `agui` y `a2a` requieren instalar extras.
+- `ai_sdk` no forma parte del runtime compatible actual de OpenAgno.

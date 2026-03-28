@@ -1,55 +1,47 @@
 # OpenAgno
 
-OpenAgno es una plataforma para construir y operar agentes sobre **Agno** usando un **workspace declarativo**. El proyecto empaqueta una CLI (`openagno`), un runtime AgentOS/FastAPI, templates listos para usar, canales, knowledge con PgVector y soporte MCP.
+OpenAgno is a declarative agent platform built on **Agno**. It packages a CLI, an AgentOS/FastAPI runtime, reusable workspace templates, MCP support, channel integrations, vector knowledge with PgVector, and a tenant-aware provisioning layer for multi-tenant deployments.
 
-## Estado actual
+OpenAgno es una plataforma declarativa para agentes construida sobre **Agno**. Incluye una CLI empaquetada, runtime AgentOS/FastAPI, templates reutilizables, soporte MCP, canales, knowledge vectorial con PgVector y una capa tenant-aware para despliegues multi-tenant.
 
-OpenAgno hoy sí incluye:
+## English
 
-- CLI empaquetada `openagno`
-- workspace declarativo en `workspace/`
-- runtime AgentOS con rutas operativas y knowledge
-- templates empaquetados
-- canales: WhatsApp, Slack y Telegram
-- protocolos opcionales: AG-UI y A2A
-- knowledge vectorial con PostgreSQL/Supabase + PgVector
-- tests automatizados
-- documentación en Mintlify
+### What exists today
 
-OpenAgno hoy no incluye todavía:
+- packaged CLI: `openagno`
+- declarative `workspace/` with YAML + Markdown
+- AgentOS runtime with admin, knowledge, and channel routes
+- packaged templates for common assistants
+- WhatsApp, Slack, Telegram, AG-UI, and A2A support
+- PgVector-backed knowledge on PostgreSQL or Supabase
+- public docs with MCP and `llms.txt`
+- tenant provisioning routes and tenant-scoped agent runs
 
-- multi-tenancy productiva
-- autenticación/dashboard SaaS
-- remote execution o sandbox aislado
-- billing
-- despliegue AWS automatizado desde la CLI
+### Installation
 
-## Instalación
+If `openagno` is already available in your Python index, use:
 
-Requisitos mínimos:
+```bash
+pip install openagno
+```
 
-- Python 3.11+
-- PostgreSQL con `pgvector` si quieres knowledge vectorial
-- Node.js 18+ solo si usarás el bridge WhatsApp QR o Mintlify local
-
-Instalación recomendada:
+If not, install from source:
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
 cd OpenAgno
-
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
-Si vas a desarrollar o usar protocolos avanzados:
+For contributors, builds, tests, and protocol extras:
 
 ```bash
 pip install -e '.[dev,protocols]'
 ```
 
-## Inicio rápido
+### Quickstart
 
 ```bash
 openagno templates list
@@ -64,117 +56,112 @@ Health check:
 curl http://127.0.0.1:8000/admin/health
 ```
 
-## Flujo recomendado
+### Tenant provisioning
 
-1. Crea un workspace desde un template.
-2. Completa `.env` con tu modelo, base de datos y canales.
-3. Valida con `openagno validate`.
-4. Arranca con `openagno start --foreground` para desarrollo o `openagno start` para supervisor local.
-5. Conecta canales y clientes sobre el runtime ya levantado.
+OpenAgno now includes tenant-aware routes:
 
-## Comandos principales
+- `POST /tenants`
+- `GET /tenants/{tenant_id}`
+- `PUT /tenants/{tenant_id}/workspace`
+- `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
+
+The runtime uses Agno-native isolation with `Knowledge(..., isolate_vector_search=True)` and `knowledge_filters={"linked_to": "<tenant>"}`.
+
+### IDE and AI integration
+
+- MCP: `https://docs.openagno.com/mcp`
+- `llms.txt`: `https://docs.openagno.com/llms.txt`
+- config exports in `ide-configs/`
+- project skill in `.agents/skills/openagno/SKILL.md`
+
+## Español
+
+### Qué existe hoy
+
+- CLI empaquetada: `openagno`
+- `workspace/` declarativo en YAML + Markdown
+- runtime AgentOS con rutas admin, knowledge y canales
+- templates empaquetados para asistentes comunes
+- soporte para WhatsApp, Slack, Telegram, AG-UI y A2A
+- knowledge con PgVector sobre PostgreSQL o Supabase
+- documentación pública con MCP y `llms.txt`
+- rutas de provisioning tenant-aware y ejecuciones por tenant
+
+### Instalación
+
+Si `openagno` ya existe en tu índice Python, usa:
 
 ```bash
-openagno init --template <id>
+pip install openagno
+```
+
+Si todavía no aparece en tu índice o mirror, instala desde el repositorio:
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+Para contributors, builds, tests y extras de protocolos:
+
+```bash
+pip install -e '.[dev,protocols]'
+```
+
+### Inicio rápido
+
+```bash
 openagno templates list
-openagno templates show <id>
+openagno init --template personal_assistant
 openagno validate
 openagno start --foreground
-openagno start
-openagno status
-openagno logs --follow
-openagno stop
-openagno restart
-openagno create agent "<nombre>"
-openagno add whatsapp --mode cloud_api
-openagno add slack
-openagno add telegram
-openagno add agui
-openagno add a2a
-openagno add tool tavily
-openagno deploy docker
 ```
 
-`openagno deploy aws` todavía no automatiza despliegue; hoy funciona como guía y no como provisionador.
+Chequeo de salud:
 
-## Estructura actual del repo
-
-```text
-OpenAgno/
-  openagno/            # CLI, helpers y templates empaquetados
-  workspace/           # Configuración declarativa del agente
-  gateway.py           # Runtime AgentOS/FastAPI
-  loader.py            # Construcción de agentes, DB, knowledge y MCP
-  routes/              # Rutas REST custom
-  tools/               # Tools locales del runtime
-  tests/               # Suite de regresión
-  docs/                # Sitio Mintlify
-  bridges/whatsapp-qr/ # Bridge opcional para QR
-  deploy/              # Assets de despliegue y systemd
+```bash
+curl http://127.0.0.1:8000/admin/health
 ```
 
-## Workspace
+### Aprovisionamiento multi-tenant
 
-Los archivos importantes están en `workspace/`:
+OpenAgno ahora incluye rutas tenant-aware:
 
-- `config.yaml`: modelo, DB, canales, scheduler y runtime
-- `instructions.md`: comportamiento principal del agente
-- `tools.yaml`: builtin y optional tools
-- `mcp.yaml`: servidores MCP
-- `self_knowledge.md`: contexto operacional del agente
-- `knowledge/urls.yaml`: URLs a ingerir
-- `agents/*.yaml`: sub-agentes
-- `agents/teams.yaml`: teams
-- `schedules.yaml`: cron jobs
-- `integrations/`: integraciones declarativas
+- `POST /tenants`
+- `GET /tenants/{tenant_id}`
+- `PUT /tenants/{tenant_id}/workspace`
+- `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
 
-## Canales y protocolos
+El runtime usa aislamiento nativo de Agno con `Knowledge(..., isolate_vector_search=True)` y `knowledge_filters={"linked_to": "<tenant>"}`.
 
-Canales soportados por el runtime actual:
+### Integración con IDEs y asistentes
 
-- `whatsapp`
-- `slack`
-- `telegram`
-- `agui`
+- MCP: `https://docs.openagno.com/mcp`
+- `llms.txt`: `https://docs.openagno.com/llms.txt`
+- exports en `ide-configs/`
+- skill local en `.agents/skills/openagno/SKILL.md`
 
-Protocolos adicionales:
+## Docs
 
-- `a2a.enabled: true`
-
-Notas:
-
-- Slack y Telegram ya están incluidos en las dependencias base del proyecto.
-- `agui` y `a2a` requieren instalar el extra `.[protocols]`.
-- El canal `ai_sdk` no forma parte del runtime compatible actual de Agno 2.5.10 y no debe usarse.
-
-## Knowledge vectorial
-
-OpenAgno usa `PgVector` de Agno sobre PostgreSQL/Supabase. Si configuras `database.type: sqlite`, la knowledge vectorial se desactiva por diseño.
-
-## Documentación
-
-La documentación vive en `docs/`.
-
-Preview local:
+Local preview:
 
 ```bash
 cd docs
-npx mintlify dev
+npm install
+npm run dev
 ```
 
-Chequeo de links:
+Validation:
 
 ```bash
 cd docs
-npx mintlify broken-links
+npm run validate
+npm run broken-links
 ```
 
-## Auditoría del plan
-
-La validación contra `docs_plan/OpenAgno_Plan_Estrategico_Consolidado.md` y el plan de cierre quedaron documentados en:
-
-- `docs_plan/phase9_audit_and_completion_plan.md`
-
-## Licencia
+## License
 
 Apache 2.0.

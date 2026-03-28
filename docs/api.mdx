@@ -1,13 +1,13 @@
 ---
-title: API HTTP
-description: Endpoints custom de OpenAgno mas las rutas nativas de AgentOS que quedan expuestas por el runtime.
+title: HTTP API / API HTTP
+description: OpenAgno runtime endpoints, including tenant provisioning, knowledge operations, admin routes, and AgentOS-native routes.
 ---
 
-Base URL tipica: `http://localhost:8000` (ajusta host y puerto en despliegue).
+Typical base URL: `http://localhost:8000` (adjust host and port in deployment).
 
-## Rutas custom de OpenAgno
+## English
 
-### Admin
+### OpenAgno custom routes
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
@@ -16,9 +16,9 @@ Base URL tipica: `http://localhost:8000` (ajusta host y puerto en despliegue).
 | `POST` | `/admin/fallback/activate` | Activar fallback manualmente |
 | `POST` | `/admin/fallback/restore` | Restaurar modelo principal |
 
-Estas rutas tienen rate limiting. Actualmente no usan `X-API-Key`; protegelas con red privada o reverse proxy si las expones en produccion.
+These routes are rate-limited. If you expose them in production, protect them behind private networking or a reverse proxy.
 
-### Knowledge custom
+### Knowledge routes
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
@@ -28,7 +28,22 @@ Estas rutas tienen rate limiting. Actualmente no usan `X-API-Key`; protegelas co
 | `DELETE` | `/knowledge/{doc_name}` | Eliminar documento |
 | `POST` | `/knowledge/search` | Busqueda semantica |
 
-Si defines `OPENAGNO_API_KEY`, estas rutas requieren el header `X-API-Key`.
+If you send `X-Tenant-ID`, these routes become tenant-aware and use Agno-native knowledge isolation.
+
+If you define `OPENAGNO_API_KEY`, these routes require the `X-API-Key` header.
+
+### Tenant provisioning routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tenants` | List tenants |
+| `POST` | `/tenants` | Create a tenant and provision its workspace |
+| `GET` | `/tenants/{tenant_id}` | Read tenant metadata |
+| `PATCH` | `/tenants/{tenant_id}` | Update plan, limits, slug, or workspace config |
+| `DELETE` | `/tenants/{tenant_id}` | Soft-deactivate a tenant |
+| `GET` | `/tenants/{tenant_id}/workspace` | Read the tenant workspace config |
+| `PUT` | `/tenants/{tenant_id}/workspace` | Update the tenant workspace config |
+| `POST` | `/tenants/{tenant_id}/agents/{agent_id}/runs` | Run an agent with tenant-scoped `knowledge_filters` |
 
 ### WhatsApp QR
 
@@ -46,9 +61,9 @@ Si defines `OPENAGNO_API_KEY`, estas rutas requieren el header `X-API-Key`.
 | `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta |
 | `POST` | `/whatsapp/webhook` | Recepcion de eventos de WhatsApp Cloud API |
 
-## Rutas nativas de AgentOS
+### AgentOS-native routes
 
-El runtime tambien expone rutas propias de AgentOS. Las mas utiles para operacion son:
+The runtime also exposes native AgentOS routes. The most relevant operational groups are:
 
 | Grupo | Rutas principales |
 |-------|-------------------|
@@ -60,13 +75,13 @@ El runtime tambien expone rutas propias de AgentOS. Las mas utiles para operacio
 | Registry / config | `/registry`, `/config`, `/components`, `/models` |
 | Observabilidad | `/health`, `/metrics`, `/traces`, `/eval-runs` |
 
-## Documentacion generada
+### Generated documentation
 
 - `/docs`
 - `/redoc`
 - `/openapi.json`
 
-## Ejemplos
+### Example
 
 Health check:
 
@@ -81,5 +96,18 @@ curl -X POST http://127.0.0.1:8000/knowledge/search \
   -H 'Content-Type: application/json' \
   -d '{"query":"OpenAgno","max_results":3}'
 ```
+
+Tenant-aware run:
+
+```bash
+curl -X POST http://127.0.0.1:8000/tenants/acme/agents/agnobot-main/runs \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: change-me' \
+  -d '{"message":"Summarize my tenant docs","user_id":"demo"}'
+```
+
+## Español
+
+El runtime también expone rutas custom y rutas nativas de AgentOS. La principal novedad de esta fase es la capa `/tenants/*`, que aprovisiona workspaces por tenant y ejecuta agentes con `knowledge_filters` tenant-aware sobre Agno.
 
 Para seguridad, rate limit y firma de WhatsApp, revisa [Seguridad](/security).

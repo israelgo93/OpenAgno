@@ -1,48 +1,79 @@
 ---
-title: Introduccion
-description: Que es OpenAgno hoy, que resuelve y por donde empezar por la ruta vigente del proyecto.
+title: Overview / Resumen
+description: What OpenAgno is today, what it solves, and where to start if you are technical or non-technical.
 ---
 
-OpenAgno es una plataforma sobre **Agno** para construir y operar agentes con un **workspace declarativo**. El proyecto combina una CLI empaquetada, un runtime AgentOS/FastAPI, templates reutilizables, canales, knowledge con PgVector y soporte para servidores MCP.
+OpenAgno is a platform built on **Agno** for creating and operating agents through a **declarative workspace**. It combines a packaged CLI, an AgentOS/FastAPI runtime, reusable templates, channel integrations, PgVector-backed knowledge, and MCP support.
 
-## Lo que existe hoy
+## English
+
+### What exists today
+
+- CLI `openagno`
+- declarative workspace in YAML and Markdown
+- AgentOS runtime with operational and knowledge routes
+- packaged templates
+- channels for WhatsApp, Slack, and Telegram
+- optional AG-UI and A2A support
+- PgVector on PostgreSQL or Supabase
+- Mintlify docs and automated tests
+
+### What phase 10 adds
+
+- tenant provisioning routes
+- tenant-aware knowledge isolation built on Agno filters
+- IDE-ready MCP exports
+- bilingual onboarding for developers and non-developers
+
+### Recommended flow
+
+1. Install the project.
+2. Create a workspace from a template.
+3. Validate the configuration.
+4. Start the runtime with `openagno`.
+5. Connect channels, IDEs, or external clients.
+
+The public documentation also exposes an MCP endpoint at `https://docs.openagno.com/mcp` and AI-friendly indexes at `https://docs.openagno.com/llms.txt`.
+
+## Español
+
+OpenAgno es una plataforma sobre **Agno** para construir y operar agentes mediante un **workspace declarativo**. Combina una CLI empaquetada, un runtime AgentOS/FastAPI, templates reutilizables, canales, knowledge con PgVector y soporte MCP.
+
+### Lo que existe hoy
 
 - CLI `openagno`
 - workspace declarativo en YAML y Markdown
 - runtime AgentOS con rutas operativas y knowledge
 - templates empaquetados
 - canales: WhatsApp, Slack y Telegram
-- protocolos opcionales: AG-UI y A2A
-- PgVector sobre PostgreSQL/Supabase
+- soporte opcional para AG-UI y A2A
+- PgVector sobre PostgreSQL o Supabase
 - documentación Mintlify y tests automatizados
 
-## Lo que sigue en roadmap
+### Lo que agrega la fase 10
 
-- multi-tenancy productiva
-- dashboard y auth
-- remote execution y sandbox
-- billing
-- despliegue AWS automatizado
-
-## Flujo recomendado
-
-1. Instala el proyecto.
-2. Crea un workspace desde un template.
-3. Valida la configuración.
-4. Arranca el runtime con `openagno`.
-5. Conecta canales o clientes sobre el OS ya levantado.
+- rutas de aprovisionamiento multi-tenant
+- aislamiento tenant-aware sobre knowledge usando filtros nativos de Agno
+- exportaciones MCP para IDEs
+- onboarding bilingüe para perfiles técnicos y no técnicos
 
 <CardGroup cols={2}>
-	<Card title="Inicio rapido" icon="rocket" href="/quickstart">
-		Instalacion, primer workspace y arranque del runtime.
+	<Card title="Quickstart / Inicio rápido" icon="rocket" href="/quickstart">
+		Installation, first workspace, and runtime startup.
+	</Card>
+	<Card title="No-code / Sin tocar código" icon="sparkles" href="/getting-started-no-code">
+		Guided local setup without touching Python code.
 	</Card>
 	<Card title="Workspace" icon="folder" href="/workspace/overview">
-		Que archivos editas y como se conectan entre si.
+		Which files matter and how they connect.
 	</Card>
 	<Card title="CLI" icon="terminal" href="/cli">
-		Comandos soportados por la ruta vigente `openagno`.
+		Supported commands in the packaged `openagno` workflow.
 	</Card>
-	<Card title="Canales" icon="message-circle" href="/channels">
-		Canales reales del runtime actual y sus requisitos.
+	<Card title="Channels / Canales" icon="message-circle" href="/channels">
+		Runtime channels and their operational requirements.
+	</Card>
+	<Card title="IDE integration / Integración" icon="plug-zap" href="/ide-integration">
+		Connect the docs and runtime to AI-powered IDEs.
 	</Card>
 </CardGroup>
