@@ -1,32 +1,21 @@
 #!/usr/bin/env bash
-# ===================================
-# OpenAgno - Setup rapido
-# ===================================
-# Uso: bash setup.sh
-#
-# Ejecuta todo el onboarding en un solo comando:
-# 1. Crea entorno virtual Python
-# 2. Instala dependencias
-# 3. Lanza el wizard interactivo de configuracion
-# 4. Valida el workspace generado
-# ===================================
+# OpenAgno bootstrap helper for local development.
 
-set -e
+set -euo pipefail
 
-echo ""
+echo
 echo "========================================"
-echo "  OpenAgno - Setup Automatico"
+echo "  OpenAgno bootstrap"
 echo "========================================"
-echo ""
+echo
 
-# Detectar Python
 PYTHON=""
 for cmd in python3 python; do
-    if command -v "$cmd" &>/dev/null; then
-        version=$("$cmd" --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
-        major=$(echo "$version" | cut -d. -f1)
-        minor=$(echo "$version" | cut -d. -f2)
-        if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
+    if command -v "$cmd" >/dev/null 2>&1; then
+        version=$("$cmd" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+        major=${version%%.*}
+        minor=${version##*.}
+        if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 10 ]; }; then
             PYTHON="$cmd"
             break
         fi
@@ -34,57 +23,51 @@ for cmd in python3 python; do
 done
 
 if [ -z "$PYTHON" ]; then
-    echo "Error: Se requiere Python 3.11 o superior."
-    echo "Instala con: sudo apt install python3.12 python3.12-venv"
+    echo "Error: Python 3.10 or newer is required."
     exit 1
 fi
 
-echo "Python detectado: $($PYTHON --version)"
+echo "Python detected: $($PYTHON --version)"
 
-# Crear entorno virtual si no existe
 if [ ! -d ".venv" ]; then
-    echo ""
-    echo "Creando entorno virtual..."
-    $PYTHON -m venv .venv
+    echo
+    echo "Creating virtual environment..."
+    "$PYTHON" -m venv .venv
 fi
 
-# Activar entorno virtual
+# shellcheck disable=SC1091
 source .venv/bin/activate
-echo "Entorno virtual activado: $(which python)"
 
-# Instalar dependencias
-echo ""
-echo "Instalando dependencias..."
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
+echo
+echo "Upgrading pip..."
+python -m pip install --upgrade pip >/dev/null
 
-# Lanzar wizard de onboarding
-echo ""
-echo "Lanzando wizard de configuracion..."
-echo ""
-python -m management.cli
+echo "Installing OpenAgno in editable mode..."
+python -m pip install -e . >/dev/null
 
-# Validar workspace
-echo ""
-echo "Validando workspace..."
-python -m management.validator
+if [ ! -d "workspace" ]; then
+    echo
+    echo "Initializing default workspace..."
+    openagno init --template personal_assistant
+else
+    echo
+    echo "Workspace already exists. Skipping template initialization."
+fi
 
-echo ""
+echo
+echo "Validating workspace..."
+openagno validate
+
+echo
 echo "========================================"
-echo "  Setup completado!"
+echo "  Bootstrap complete"
 echo "========================================"
-echo ""
-echo "  Comandos disponibles:"
-echo ""
-echo "  Iniciar:     python gateway.py"
-echo "  Daemon:      python service_manager.py start"
-echo "  Detener:     python service_manager.py stop"
-echo "  Reiniciar:   python service_manager.py restart"
-echo "  Estado:      python service_manager.py status"
-echo "  Validar:     python -m management.validator"
-echo "  Admin:       python -m management.admin status"
-echo ""
-echo "  Web UI:      http://localhost:8000"
-echo "  Studio:      os.agno.com > Add OS > Local"
-echo ""
-echo "========================================"
+echo
+echo "Next commands:"
+echo "  openagno start --foreground"
+echo "  openagno start"
+echo "  openagno status"
+echo "  openagno logs --follow"
+echo
+echo "Open the runtime at: http://localhost:8000"
+echo

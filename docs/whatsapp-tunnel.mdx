@@ -1,0 +1,82 @@
+---
+title: WhatsApp tunnel
+description: Exponer OpenAgno localmente para webhooks de WhatsApp sin un dominio público propio.
+---
+
+Agno documenta el uso de túneles públicos para desarrollo local con interfaces como WhatsApp, Slack y Telegram. En OpenAgno, esa es también la ruta recomendada cuando pruebas webhooks desde tu máquina.
+
+## Cuándo usar esta guía
+
+Usa esta guía si:
+
+- estás ejecutando `openagno start --foreground` o `openagno start` en localhost
+- necesitas registrar un webhook público en Meta
+- todavía no tienes un dominio propio para el runtime
+
+## Opción A. ngrok
+
+```bash
+ngrok http 8000
+```
+
+ngrok te devolverá una URL parecida a:
+
+```text
+https://abc123.ngrok-free.app
+```
+
+Esa será la base pública de tu webhook.
+
+## Opción B. cloudflared
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+Cloudflare te dará una URL pública temporal o enlazada a un túnel persistente, según tu configuración.
+
+## Configura Meta Developer Console
+
+Usa la URL pública del túnel para:
+
+- `GET /whatsapp/webhook`
+- `POST /whatsapp/webhook`
+
+Por ejemplo:
+
+```text
+https://abc123.ngrok-free.app/whatsapp/webhook
+```
+
+## Variables mínimas para WhatsApp Cloud API
+
+```bash
+WHATSAPP_ACCESS_TOKEN=tu_token
+WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
+WHATSAPP_VERIFY_TOKEN=tu_verify_token
+WHATSAPP_APP_SECRET=tu_app_secret
+```
+
+## Desarrollo local controlado
+
+Si estás probando localmente y todavía no tienes una firma webhook válida, puedes desactivar la validación solo en desarrollo:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+No uses esta variable en producción.
+
+## Checklist rápido
+
+1. Arranca OpenAgno en `:8000`.
+2. Levanta un túnel público.
+3. Copia la URL pública al webhook de Meta.
+4. Verifica `GET /whatsapp/webhook`.
+5. Envía un mensaje de prueba y revisa `openagno logs --follow`.
+
+## Notas
+
+- Si tu proveedor reintenta el mismo evento, OpenAgno deduplica por `message_id`.
+- Si el webhook tarda demasiado en responder, Meta puede reenviar el evento.
+- Para otras interfaces con callbacks públicos, el mismo patrón de túnel local aplica en desarrollo.

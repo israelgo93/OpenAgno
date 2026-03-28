@@ -1,7 +1,9 @@
 ---
 title: Canales
-description: Canales reales del runtime actual, sus requisitos y como habilitarlos.
+description: Canales reales del runtime actual, sus requisitos y cómo habilitarlos.
 ---
+
+OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actual: WhatsApp, Slack, Telegram, AG-UI y A2A. El canal `ai_sdk` no forma parte de la ruta compatible vigente y no debe usarse en nuevas configuraciones.
 
 ## Matriz rápida
 
@@ -30,9 +32,21 @@ Rutas relevantes:
 
 El runtime:
 
-- valida firma
+- valida firma cuando corresponde
 - deduplica por `message_id`
 - procesa payloads mixtos sin perder mensajes nuevos
+
+## Desarrollo local sin dominio
+
+La documentación oficial de Agno recomienda usar un túnel público durante desarrollo local para WhatsApp, Slack y Telegram. En OpenAgno, esa ruta queda documentada en [/whatsapp-tunnel](/whatsapp-tunnel).
+
+Para pruebas controladas sin firma real:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+Úsalo solo en desarrollo.
 
 ## WhatsApp QR
 
@@ -65,6 +79,8 @@ SLACK_TOKEN=xoxb-tu-token
 SLACK_SIGNING_SECRET=tu_signing_secret
 ```
 
+Si trabajas en local, Agno también documenta usar ngrok para enrutar event subscriptions a tu runtime.
+
 ## Telegram
 
 Telegram también está incluido en la instalación base.
@@ -75,19 +91,16 @@ TELEGRAM_TOKEN=tu_token_de_botfather
 
 ## AG-UI y A2A
 
-Estos protocolos son compatibles con Agno 2.5.10, pero requieren extras:
+Estos protocolos son compatibles con el runtime actual, pero requieren extras:
 
 ```bash
 pip install -e '.[protocols]'
-```
-
-Luego:
-
-```bash
 openagno add agui
 openagno add a2a
 ```
 
-## Nota de compatibilidad
+## Compatibilidad
 
-`ai_sdk` no forma parte del runtime compatible actual de OpenAgno y no debe usarse en nuevas configuraciones.
+- `slack` y `telegram` forman parte de las dependencias base.
+- `agui` y `a2a` requieren instalar extras.
+- `ai_sdk` no forma parte del runtime compatible actual de OpenAgno.

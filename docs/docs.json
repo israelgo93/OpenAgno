@@ -28,6 +28,7 @@
 				"pages": [
 					"index",
 					"quickstart",
+					"getting-started-no-code",
 					"architecture"
 				]
 			},
@@ -40,6 +41,7 @@
 					"workspace/integrations",
 					"models",
 					"channels",
+					"whatsapp-tunnel",
 					"tools",
 					"knowledge",
 					"mcp"
@@ -65,7 +67,9 @@
 			{
 				"group": "Referencia",
 				"pages": [
-					"reference"
+					"reference",
+					"changelog",
+					"contributing"
 				]
 			}
 		]

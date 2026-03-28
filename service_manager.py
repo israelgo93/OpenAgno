@@ -17,6 +17,13 @@ import threading
 from pathlib import Path
 from dotenv import load_dotenv
 
+from openagno.core.process_utils import (
+	IS_WINDOWS,
+	is_pid_running,
+	read_pid_file,
+	terminate_pid,
+)
+
 load_dotenv()
 
 OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.resolve()))
@@ -83,7 +90,10 @@ class GatewayDaemon:
 				PID_FILE.unlink()
 			return
 		pid = self.process.pid
-		self.process.send_signal(signal.SIGTERM)
+		if IS_WINDOWS:
+			self.process.terminate()
+		else:
+			self.process.send_signal(signal.SIGTERM)
 		try:
 			self.process.wait(timeout=timeout)
 		except subprocess.TimeoutExpired:
@@ -147,7 +157,8 @@ class GatewayDaemon:
 			self.stop_gateway()
 			sys.exit(0)
 
-		signal.signal(signal.SIGTERM, _shutdown)
+		if hasattr(signal, "SIGTERM"):
+			signal.signal(signal.SIGTERM, _shutdown)
 		signal.signal(signal.SIGINT, _shutdown)
 		try:
 			while not self._stop_event.is_set():
@@ -158,23 +169,17 @@ class GatewayDaemon:
 
 def _kill_existing() -> bool:
 	"""Detiene el proceso existente si hay PID file."""
-	if not PID_FILE.exists():
+	pid = read_pid_file(PID_FILE)
+	if pid is None:
 		return False
-	try:
-		pid = int(PID_FILE.read_text().strip())
-		os.kill(pid, signal.SIGTERM)
-		for _ in range(10):
-			try:
-				os.kill(pid, 0)
-				time.sleep(1)
-			except ProcessLookupError:
-				break
+	if not is_pid_running(pid):
 		PID_FILE.unlink(missing_ok=True)
+		return False
+	stopped = terminate_pid(pid)
+	PID_FILE.unlink(missing_ok=True)
+	if stopped:
 		print(f"[daemon] Proceso anterior detenido (PID {pid})")
-		return True
-	except (ProcessLookupError, ValueError):
-		PID_FILE.unlink(missing_ok=True)
-		return False
+	return stopped
 
 
 def main() -> None:
@@ -197,16 +202,11 @@ def main() -> None:
 			GatewayDaemon().run()
 		case "status":
 			daemon = GatewayDaemon()
-			pid = PID_FILE.read_text().strip() if PID_FILE.exists() else "N/A"
+			pid = read_pid_file(PID_FILE)
+			pid_display = str(pid) if pid is not None else "N/A"
 			healthy = daemon.health_check()
-			running = False
-			if pid != "N/A":
-				try:
-					os.kill(int(pid), 0)
-					running = True
-				except (ProcessLookupError, ValueError):
-					pass
-			print(f"PID: {pid} | Proceso: {'ACTIVO' if running else 'INACTIVO'} | Health: {'OK' if healthy else 'FAIL'}")
+			running = is_pid_running(pid) if pid is not None else False
+			print(f"PID: {pid_display} | Proceso: {'ACTIVO' if running else 'INACTIVO'} | Health: {'OK' if healthy else 'FAIL'}")
 			if healthy:
 				try:
 					import urllib.request
