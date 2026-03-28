@@ -630,14 +630,33 @@ def build_model(model_config: dict[str, Any]) -> Any:
 	return model
 
 
-def build_fallback_model(model_config: dict[str, Any]) -> Optional[Any]:
-	"""Construye el modelo fallback si esta configurado."""
-	fallback_config = model_config.get("fallback", {})
-	if not fallback_config or not fallback_config.get("id"):
+def build_fallback_model(
+	config: dict[str, Any],
+	model_config: Optional[dict[str, Any]] = None,
+) -> Optional[Any]:
+	"""Construye el modelo fallback si esta configurado.
+
+	Soporta la forma actual documentada en `config.yaml` (`fallback` top-level)
+	y la forma legacy `model.fallback` para compatibilidad hacia atras.
+	"""
+	resolved_model_config = model_config or config.get("model", config)
+	if not isinstance(resolved_model_config, dict):
+		resolved_model_config = {}
+
+	fallback_config = config.get("fallback", {})
+	if not isinstance(fallback_config, dict) or not fallback_config:
+		fallback_config = resolved_model_config.get("fallback", {})
+
+	if not isinstance(fallback_config, dict):
 		return None
 
-	provider = model_config.get("provider", "google")
-	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
+	if fallback_config.get("enabled") is False or not fallback_config.get("id"):
+		return None
+
+	provider = resolved_model_config.get("provider", "google")
+	aws_region = resolved_model_config.get(
+		"aws_region", os.getenv("AWS_REGION", "us-east-1")
+	)
 
 	fb_provider = fallback_config.get("provider", provider)
 	fb_id = fallback_config["id"]
@@ -905,7 +924,7 @@ def load_workspace() -> dict[str, Any]:
 
 	model_config = config.get("model", {})
 	model = build_model(model_config)
-	fallback_model = build_fallback_model(model_config)
+	fallback_model = build_fallback_model(config, model_config=model_config)
 
 	# Auto-cargar AudioTools si el modelo no soporta audio nativo
 	# y hay configuracion de audio habilitada

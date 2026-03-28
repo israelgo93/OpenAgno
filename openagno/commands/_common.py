@@ -110,6 +110,17 @@ def update_channels(root: Path, channel: str, extra_config: dict[str, Any] | Non
 	write_yaml_file(config_path, config)
 
 
+def update_config_section(root: Path, section: str, values: dict[str, Any]) -> None:
+	config_path = ensure_workspace_exists(root) / "config.yaml"
+	config = load_yaml_file(config_path)
+	current = config.get(section, {})
+	if not isinstance(current, dict):
+		current = {}
+	current.update(values)
+	config[section] = current
+	write_yaml_file(config_path, config)
+
+
 def toggle_optional_tool(root: Path, tool_name: str, enabled: bool = True) -> None:
 	tools_path = ensure_workspace_exists(root) / "tools.yaml"
 	tools_config = load_yaml_file(tools_path)

@@ -1,77 +1,76 @@
 ---
 title: Arquitectura
-description: Como se organiza OpenAgno en codigo y que ocurre en runtime al levantar un workspace.
+description: Como se organiza OpenAgno hoy y que ocurre cuando levantas un workspace.
 ---
 
-## Componentes
+## Componentes principales
 
 | Componente | Rol |
 |------------|-----|
-| `openagno/` | CLI empaquetada, templates y helpers para operar el proyecto |
-| `management/cli.py` | Onboarding y utilidades legacy de consola |
-| `management/validator.py` | Validacion del workspace antes y durante el arranque |
-| `gateway.py` | FastAPI + AgentOS: agente principal, canales, admin, fallback |
-| `loader.py` | Carga YAML/MD del workspace y construye agentes, DB, knowledge, MCP |
-| `service_manager.py` | Supervisor opcional con hot-reload |
-| `routes/knowledge_routes.py` | Endpoints REST custom para knowledge |
-| `security.py` | Verificacion de API key para rutas custom que la usan |
+| `openagno/` | CLI y templates empaquetados |
+| `workspace/` | Configuración declarativa del agente |
+| `loader.py` | Construcción de modelo, DB, knowledge, tools y MCP |
+| `gateway.py` | Runtime FastAPI + AgentOS |
+| `routes/knowledge_routes.py` | API custom de knowledge |
+| `tools/` | Tools locales del runtime |
 
 ## Flujo de arranque
 
-1. El runtime lee `workspace/config.yaml`, `instructions.md`, `tools.yaml`, `mcp.yaml`, `self_knowledge.md`, agentes, teams, schedules e integraciones.
-2. `loader.py` construye modelo principal, fallback opcional, DB, knowledge, tools y servidores MCP.
-3. `gateway.py` monta el app FastAPI, registra rutas custom, aplica rate limiting y configura interfaces AgentOS.
-4. AgentOS expone rutas nativas para agentes, teams, sesiones, memorias, schedules, registry y OpenAPI.
+1. `openagno` valida y lee `workspace/`.
+2. `loader.py` construye modelo principal, fallback, DB, knowledge, tools, MCP, sub-agentes y teams.
+3. `gateway.py` monta el app FastAPI, agrega middlewares y registra interfaces de Agno.
+4. AgentOS expone el runtime y sus rutas nativas.
 
-## Comportamientos relevantes en runtime
+## Capacidades operativas relevantes
 
-### Historial y compatibilidad de modelos
+### Historial cross-model
 
-- Antes de cada run, OpenAgno sanea historial de sesion para providers que son sensibles a `tool_call_id` inconsistentes.
-- Este saneamiento evita errores al reutilizar sesiones entre proveedores compatibles e incompatibles con ciertos formatos de tool call.
+OpenAgno sanea historial de sesión antes de ejecutar providers sensibles a `tool_call_id` incompatibles, especialmente Anthropic y Bedrock.
 
-### WhatsApp Cloud API
+### WhatsApp
 
-- La ruta `POST /whatsapp/webhook` valida firma con `WHATSAPP_APP_SECRET`.
-- Solo despues de pasar esa validacion se aplica deduplicacion por `message_id`.
-- Si el payload contiene mensajes repetidos y nuevos, OpenAgno filtra los repetidos y re-firma el body antes de entregarlo al router oficial de Agno.
+- valida firma si existe `WHATSAPP_APP_SECRET`
+- deduplica por `message_id`
+- filtra replays sin bloquear mensajes nuevos
 
 ### Knowledge
 
-- Si la base es SQLite, la knowledge vectorial se desactiva.
-- Si la base es PostgreSQL/PgVector, se crea knowledge con el `search_type`, embedder y `max_results` definidos en `config.yaml`.
-- Los documentos y URLs pueden ingerirse al arranque y tambien via API.
+- PostgreSQL/Supabase + PgVector habilitan retrieval vectorial
+- SQLite desactiva la knowledge vectorial
+- documentos y URLs pueden ingerirse al arranque o vía API
 
-### Operacion
+### Canales y protocolos
 
-- `service_manager.py` vigila el health check y reinicia el gateway si cae o si detecta `.reload_requested`.
-- Los endpoints custom de admin y knowledge tienen rate limiting.
-- Si usas `openagno start` o `service_manager.py start`, los logs del gateway se escriben en `gateway.log`.
+El runtime actual soporta:
 
-## Diagrama (resumen)
+- WhatsApp
+- Slack
+- Telegram
+- AG-UI
+- A2A
+
+## Diagrama rápido
 
 ```mermaid
 flowchart LR
-	subgraph cfg[Configuracion]
-		W[workspace YAML/MD]
+	subgraph cfg[Workspace]
+		W[config.yaml y archivos relacionados]
 	end
 	subgraph run[Runtime]
 		C[openagno CLI]
 		L[loader.py]
 		G[gateway.py]
-		S[service_manager.py]
 	end
-	subgraph out[Canales y clientes]
-		ST[Studio / Web]
+	subgraph out[Interfaces]
 		WA[WhatsApp]
-		OT[Slack, Telegram]
+		SL[Slack]
+		TG[Telegram]
+		AG[AG-UI / A2A]
 	end
 	C --> W
 	W --> L --> G
-	S --> G
-	G --> ST
 	G --> WA
-	G --> OT
+	G --> SL
+	G --> TG
+	G --> AG
 ```
-
-Para la estructura de archivos y rutas de edicion, ve [Estructura del proyecto](/structure).

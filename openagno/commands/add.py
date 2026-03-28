@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import typer
 
-from openagno.commands._common import console, project_root, toggle_optional_tool, update_channels
+from openagno.commands._common import (
+	console,
+	project_root,
+	toggle_optional_tool,
+	update_channels,
+	update_config_section,
+)
 
 add_app = typer.Typer(help="Add channels and tools to the current workspace.")
 
@@ -30,6 +36,20 @@ def add_telegram() -> None:
 	root = project_root()
 	update_channels(root, "telegram")
 	console.print("[green]Canal Telegram agregado.[/green]")
+
+
+@add_app.command("agui")
+def add_agui() -> None:
+	root = project_root()
+	update_channels(root, "agui")
+	console.print("[green]Canal AG-UI agregado.[/green]")
+
+
+@add_app.command("a2a")
+def add_a2a() -> None:
+	root = project_root()
+	update_config_section(root, "a2a", {"enabled": True})
+	console.print("[green]Protocolo A2A habilitado.[/green]")
 
 
 @add_app.command("tool")

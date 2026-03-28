@@ -1,11 +1,9 @@
 ---
 title: Troubleshooting
-description: Problemas comunes al arrancar u operar OpenAgno y como diagnosticarlos sin perder tiempo.
+description: Problemas comunes del flujo vigente y cómo diagnosticarlos rápido.
 ---
 
 ## El gateway no arranca
-
-Verifica primero:
 
 ```bash
 openagno validate
@@ -21,29 +19,45 @@ openagno logs --follow
 
 ## `Workspace no encontrado`
 
-La CLI empaquetada espera `workspace/` dentro de `OPENAGNO_ROOT` o del directorio actual.
+La CLI espera `workspace/` dentro de `OPENAGNO_ROOT` o del directorio actual.
 
-Acciones:
+Solución:
 
-- ejecuta comandos desde la raiz del proyecto,
-- o define `OPENAGNO_ROOT`,
-- o inicializa el workspace con `openagno init --template ...`.
+- ejecuta los comandos desde la raíz del proyecto
+- o define `OPENAGNO_ROOT`
+- o crea el workspace con `openagno init --template ...`
 
 ## Knowledge deshabilitada
 
-Si ves que la knowledge devuelve vacio o no se inicializa:
+Revisa:
 
-- revisa si `database.type` es `sqlite`,
-- confirma que PgVector este disponible,
-- valida `OPENAI_API_KEY` si usas el embedder por defecto.
+- `database.type`
+- disponibilidad de PostgreSQL + `pgvector`
+- `OPENAI_API_KEY` si usas el embedder por defecto
 
-## WhatsApp Cloud API responde `Invalid signature`
+## Slack o Telegram no levantan
+
+Revisa:
+
+- `SLACK_TOKEN` y `SLACK_SIGNING_SECRET`
+- `TELEGRAM_TOKEN`
+- que el entorno haya sido instalado con las dependencias del proyecto
+
+## `agui` o `a2a` no levantan
+
+Instala extras:
+
+```bash
+pip install -e '.[protocols]'
+```
+
+## WhatsApp responde `Invalid signature`
 
 Revisa:
 
 - `WHATSAPP_APP_SECRET`
-- que Meta este firmando la request correcta
-- que no estes haciendo pruebas locales sin firma real
+- configuración del webhook de Meta
+- si estás probando en local sin firma real
 
 Para pruebas locales controladas:
 
@@ -53,26 +67,8 @@ WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
 
 ## Mensajes repetidos en WhatsApp
 
-OpenAgno deduplica por `message_id`, pero solo despues de validar firma. Si ves replays:
+OpenAgno deduplica por `message_id`. Si ves replays:
 
-- confirma que el proveedor externo realmente reenvia el mismo `message_id`,
-- revisa logs de `Webhook duplicado ignorado`,
-- prueba con un payload mixto para confirmar que solo se filtran los repetidos.
-
-## Warnings de dependencias HTTP/WebSocket
-
-La combinacion validada en esta fase usa:
-
-- `chardet>=5.2,<6`
-- `wsproto>=1.3.0`
-
-Si reaparecen warnings, revisa que el entorno virtual no haya quedado con versiones fuera de `requirements.lock`.
-
-## La CLI no encuentra logs
-
-`openagno logs` lee `gateway.log`. Ese archivo existe cuando arrancas con:
-
-- `openagno start`
-- `python service_manager.py start`
-
-Si arrancas en foreground, los logs salen a stdout y no necesariamente a `gateway.log`.
+- confirma que el proveedor reenvía el mismo `message_id`
+- revisa logs de duplicados
+- valida que el webhook esté respondiendo 200

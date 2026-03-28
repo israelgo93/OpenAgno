@@ -109,6 +109,9 @@ def validate_workspace(workspace_dir: Optional[str] = None) -> list[str]:
 		if not os.getenv("SLACK_SIGNING_SECRET"):
 			errors.append(".env: falta SLACK_SIGNING_SECRET (requerido para canal Slack)")
 
+	if "telegram" in channels and not os.getenv("TELEGRAM_TOKEN"):
+		errors.append(".env: falta TELEGRAM_TOKEN (requerido para canal Telegram)")
+
 	try:
 		with open(ws / "tools.yaml", "r", encoding="utf-8") as f:
 			tools_config = yaml.safe_load(f) or {}

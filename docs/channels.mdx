@@ -1,24 +1,20 @@
 ---
 title: Canales
-description: Configuracion real de WhatsApp, Slack, Telegram, Web/Studio y canales opcionales del runtime.
+description: Canales reales del runtime actual, sus requisitos y como habilitarlos.
 ---
 
-## Matriz rapida
+## Matriz rápida
 
-| Canal | Activacion | Rutas / notas |
-|-------|------------|---------------|
-| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | `GET/POST /whatsapp/webhook`, validacion de firma |
-| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | `/whatsapp-qr/*`, requiere bridge Node |
-| WhatsApp dual | `channels: [whatsapp]` + `whatsapp.mode: dual` | Cloud API + QR en la misma instancia |
-| Slack | `channels: [slack]` | Router Agno Slack |
-| Telegram | `channels: [telegram]` | Router Agno Telegram |
-| Web / Studio | Siempre disponible | `os.agno.com` o rutas nativas AgentOS |
-| AI SDK | `channels: [ai_sdk]` | Opcional, depende de Agno instalado |
-| A2A | `a2a.enabled: true` | Opcional, depende de Agno instalado |
+| Canal o protocolo | Activación | Requisitos |
+|-------------------|------------|------------|
+| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | credenciales Meta |
+| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | bridge Node opcional |
+| Slack | `channels: [slack]` | `SLACK_TOKEN`, `SLACK_SIGNING_SECRET` |
+| Telegram | `channels: [telegram]` | `TELEGRAM_TOKEN` |
+| AG-UI | `channels: [agui]` | extra `.[protocols]` |
+| A2A | `a2a.enabled: true` | extra `.[protocols]` |
 
-## WhatsApp Cloud API (Meta)
-
-Canal oficial mediante Meta Business API. Requiere cuenta Business verificada.
+## WhatsApp Cloud API
 
 ```bash
 WHATSAPP_ACCESS_TOKEN=tu_token
@@ -27,32 +23,24 @@ WHATSAPP_VERIFY_TOKEN=tu_verify_token
 WHATSAPP_APP_SECRET=tu_app_secret
 ```
 
-Configura el webhook de Meta apuntando a `https://tu-dominio/whatsapp/webhook`.
+Rutas relevantes:
 
-### Comportamiento del webhook
+- `GET /whatsapp/webhook`
+- `POST /whatsapp/webhook`
 
-- `GET /whatsapp/webhook` se usa para la verificacion de Meta.
-- `POST /whatsapp/webhook` valida la firma contra `WHATSAPP_APP_SECRET`.
-- Solo despues de pasar esa validacion se ejecuta deduplicacion por `message_id`.
-- Si llega un payload con mensajes repetidos y nuevos, OpenAgno filtra los repetidos y procesa solo los nuevos.
+El runtime:
 
-Para desarrollo local puedes desactivar la firma con:
+- valida firma
+- deduplica por `message_id`
+- procesa payloads mixtos sin perder mensajes nuevos
 
-```bash
-WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
-```
-
-No uses esa variable en produccion.
-
-## WhatsApp QR (bridge Baileys)
-
-Vinculacion por QR como dispositivo secundario. No requiere cuenta Business.
+## WhatsApp QR
 
 ```yaml
 whatsapp:
-	mode: qr_link
-	qr_link:
-		bridge_url: http://localhost:3001
+  mode: qr_link
+  qr_link:
+    bridge_url: http://localhost:3001
 ```
 
 ```bash
@@ -61,19 +49,16 @@ npm install
 node index.js
 ```
 
-Luego inicia el gateway y abre una de estas rutas:
+Rutas:
 
-- `http://localhost:8000/whatsapp-qr/code`
-- `http://localhost:8000/whatsapp-qr/code/json`
-- `http://localhost:8000/whatsapp-qr/status`
-
-## Modo dual
-
-Puedes ejecutar Cloud API y QR en simultaneo con `whatsapp.mode: dual` en `config.yaml`.
+- `/whatsapp-qr/status`
+- `/whatsapp-qr/code`
+- `/whatsapp-qr/code/json`
+- `/whatsapp-qr/incoming`
 
 ## Slack
 
-Bot de Slack. Scopes tipicos: `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`.
+Slack está soportado en la instalación base del proyecto.
 
 ```bash
 SLACK_TOKEN=xoxb-tu-token
@@ -82,21 +67,27 @@ SLACK_SIGNING_SECRET=tu_signing_secret
 
 ## Telegram
 
-Crea el bot con BotFather y configura el token.
+Telegram también está incluido en la instalación base.
 
 ```bash
 TELEGRAM_TOKEN=tu_token_de_botfather
 ```
 
-## Web (Studio)
+## AG-UI y A2A
 
-Siempre disponible con el gateway. Conecta desde [os.agno.com](https://os.agno.com) &gt; Add OS &gt; Local &gt; `http://localhost:8000`.
+Estos protocolos son compatibles con Agno 2.5.10, pero requieren extras:
 
-## AI SDK y A2A
+```bash
+pip install -e '.[protocols]'
+```
 
-El runtime tambien puede registrar:
+Luego:
 
-- `ai_sdk` en `channels`
-- `a2a.enabled: true`
+```bash
+openagno add agui
+openagno add a2a
+```
 
-Ambos dependen de que tu instalacion de Agno incluya esas interfaces.
+## Nota de compatibilidad
+
+`ai_sdk` no forma parte del runtime compatible actual de OpenAgno y no debe usarse en nuevas configuraciones.

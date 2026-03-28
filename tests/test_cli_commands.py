@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import yaml
 from typer.testing import CliRunner
 
 from openagno.cli import app
@@ -30,3 +31,25 @@ def test_init_from_template(tmp_path: Path):
     )
     assert result.exit_code == 0
     assert (tmp_path / "workspace" / "config.yaml").exists()
+
+
+def test_add_agui_updates_workspace(tmp_path: Path):
+    runner.invoke(
+        app,
+        ["init", "--template", "personal_assistant", "--directory", str(tmp_path)],
+    )
+    result = runner.invoke(app, ["add", "agui"], env={"OPENAGNO_ROOT": str(tmp_path)})
+    assert result.exit_code == 0
+    config = yaml.safe_load((tmp_path / "workspace" / "config.yaml").read_text())
+    assert "agui" in config["channels"]
+
+
+def test_add_a2a_updates_workspace(tmp_path: Path):
+    runner.invoke(
+        app,
+        ["init", "--template", "personal_assistant", "--directory", str(tmp_path)],
+    )
+    result = runner.invoke(app, ["add", "a2a"], env={"OPENAGNO_ROOT": str(tmp_path)})
+    assert result.exit_code == 0
+    config = yaml.safe_load((tmp_path / "workspace" / "config.yaml").read_text())
+    assert config["a2a"]["enabled"] is True

@@ -19,6 +19,7 @@ from loader import (
     build_db_url,
     build_tools,
     build_mcp_tools,
+    build_fallback_model,
     _resolve_env,
     _resolve_config,
     BUILTIN_TOOL_MAP,
@@ -191,6 +192,39 @@ class TestBuildMcpTools:
         server_params = tools[0].server_params
         assert server_params.command == "npx"
         assert server_params.args[-1] == "token-123"
+
+
+class TestBuildFallbackModel:
+    """Tests para fallback model config."""
+
+    def test_supports_top_level_fallback_block(self):
+        config = {
+            "model": {"provider": "google", "id": "gemini-2.5-flash"},
+            "fallback": {
+                "enabled": True,
+                "provider": "openai",
+                "id": "gpt-4o-mini",
+            },
+        }
+        with patch("loader._build_single_model", return_value="fallback-model") as mocked:
+            result = build_fallback_model(config, model_config=config["model"])
+        assert result == "fallback-model"
+        mocked.assert_called_once_with("openai", "gpt-4o-mini", "us-east-1")
+
+    def test_supports_legacy_nested_fallback_block(self):
+        model_config = {
+            "provider": "google",
+            "id": "gemini-2.5-flash",
+            "fallback": {
+                "enabled": True,
+                "provider": "anthropic",
+                "id": "claude-sonnet-4",
+            },
+        }
+        with patch("loader._build_single_model", return_value="fallback-model") as mocked:
+            result = build_fallback_model(model_config)
+        assert result == "fallback-model"
+        mocked.assert_called_once_with("anthropic", "claude-sonnet-4", "us-east-1")
 
 
 class TestSanitizeHistory:

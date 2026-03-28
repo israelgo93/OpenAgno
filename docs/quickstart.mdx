@@ -1,65 +1,70 @@
 ---
 title: Inicio rapido
-description: Instalar OpenAgno, crear un workspace usable y validar el primer arranque con la CLI actual.
+description: Instalar OpenAgno, crear un workspace usable y levantar el runtime por la ruta vigente.
 ---
 
 ## Requisitos
 
 - Python 3.11 o superior
-- Node.js 18+ solo si usas el bridge WhatsApp QR
-- PostgreSQL con extension **pgvector** para knowledge vectorial
-- SQLite solo si aceptas correr sin knowledge vectorial
+- PostgreSQL con `pgvector` si quieres knowledge vectorial
+- Node.js 18+ solo si usarás WhatsApp QR o Mintlify local
 
 ## 1. Instala el proyecto
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
 cd OpenAgno
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 pip install -e .
 ```
 
-`bash setup.sh` sigue siendo valido si prefieres el instalador del repo.
+Si también vas a desarrollar o habilitar protocolos avanzados:
 
-## 2. Revisa los templates disponibles
+```bash
+pip install -e '.[dev,protocols]'
+```
+
+## 2. Explora templates disponibles
 
 ```bash
 openagno templates list
 ```
 
-## 3. Inicializa un workspace
+## 3. Crea tu workspace
 
-La ruta recomendada para empezar es copiar un template:
+La ruta más simple es copiar un template:
 
 ```bash
 openagno init --template personal_assistant
 ```
 
-Tambien puedes usar el onboarding interactivo:
+## 4. Completa `.env`
 
-```bash
-openagno init
-```
+Variables comunes:
 
-El onboarding historico via `python -m management.cli` sigue disponible, pero la ruta principal documentada desde esta version es `openagno`.
+- `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
+- `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
+- `TELEGRAM_TOKEN`
+- `OPENAGNO_API_KEY` si quieres proteger rutas custom
 
-## 4. Valida antes de arrancar
+## 5. Valida antes de arrancar
 
 ```bash
 openagno validate
 ```
 
-## 5. Inicia el runtime
+## 6. Arranca el runtime
 
-En foreground:
+Foreground:
 
 ```bash
 openagno start --foreground
 ```
 
-Con supervisor en background:
+Supervisor local:
 
 ```bash
 openagno start
@@ -67,29 +72,15 @@ openagno status
 openagno logs --follow
 ```
 
-## 6. Verifica el primer arranque
+## 7. Verifica salud
 
 ```bash
 curl http://127.0.0.1:8000/admin/health
 ```
 
-Si el gateway esta sano, la respuesta incluye agentes, canales, modelo y scheduler.
+## Notas prácticas
 
-## Variables de entorno
-
-Copia `.env.example` a `.env` y completa las claves segun modelo y canales.
-
-Variables comunes:
-
-- `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-- `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`
-- `OPENAGNO_API_KEY` para proteger las rutas custom de knowledge
-- `OPENAGNO_ROOT` si quieres fijar explicitamente la raiz del proyecto
-
-## Recomendaciones para no perder tiempo
-
-- Mantén el proyecto con la estructura estandar: `OPENAGNO_ROOT/workspace`.
-- Usa templates para el primer arranque; evitas errores de estructura minima.
-- Si el proyecto corre con SQLite, la knowledge vectorial se desactiva por diseño.
-- Si usas WhatsApp Cloud API localmente, solo usa `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` en desarrollo.
+- Si eliges `database.type: sqlite`, OpenAgno corre, pero sin knowledge vectorial.
+- Slack y Telegram ya forman parte de la instalación base.
+- `agui` y `a2a` requieren `pip install -e '.[protocols]'`.
+- Si vas a usar WhatsApp Cloud API en local, solo usa `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` en desarrollo.

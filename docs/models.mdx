@@ -1,38 +1,35 @@
 ---
 title: Modelos
-description: Providers soportados, credenciales y comportamiento del fallback en runtime.
+description: Providers soportados y comportamiento real del fallback en OpenAgno.
 ---
 
-Cualquier modelo puede usarse como principal o como **fallback**. El fallback se activa automaticamente ante rate limit y el principal se restaura tras el cooldown (`FALLBACK_COOLDOWN_SECONDS`, por defecto 60 segundos).
-
-| Provider | Ejemplos | API Key / credenciales |
-|----------|----------|-------------------------|
-| `google` | `gemini-2.5-flash` (por defecto), `gemini-2.5-pro` | `GOOGLE_API_KEY` |
+| Provider | Ejemplos | Credenciales |
+|----------|----------|--------------|
+| `google` | `gemini-2.5-flash`, `gemini-2.5-pro` | `GOOGLE_API_KEY` |
 | `openai` | `gpt-4.1`, `gpt-4o`, `gpt-4o-mini` | `OPENAI_API_KEY` |
 | `anthropic` | `claude-sonnet-4`, `claude-opus-4` | `ANTHROPIC_API_KEY` |
-| `aws_bedrock_claude` | `us.anthropic.claude-sonnet-4-6`, etc. | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| `aws_bedrock_claude` | `us.anthropic.claude-sonnet-4-6` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
 | `aws_bedrock` | `amazon.nova-pro-v1:0` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
-
-## Notas importantes
-
-- `google` y `openai` son los caminos mas simples para empezar.
-- `AWS_REGION` controla la region de Bedrock si no la resuelves en el entorno o proveedor.
-- Los providers tipo Anthropic/Bedrock son los que mas se benefician del saneamiento de historial cross-model implementado por OpenAgno.
-- El bloque `audio` del workspace es especialmente util cuando el provider activo no soporta audio nativo y necesitas STT/TTS.
 
 ## Fallback
 
-El bloque `fallback` vive a nivel raiz de `config.yaml`, por ejemplo:
+OpenAgno usa el bloque `fallback` a nivel raíz de `config.yaml`:
 
 ```yaml
 fallback:
-	enabled: true
-	provider: aws_bedrock_claude
-	id: us.anthropic.claude-sonnet-4-6
+  enabled: true
+  provider: aws_bedrock_claude
+  id: us.anthropic.claude-sonnet-4-6
 ```
 
-Cuando esta habilitado:
+Cuando está activo:
 
-- los errores tipo rate limit activan el modelo de respaldo,
-- el runtime entra en cooldown,
-- luego vuelve al modelo principal automaticamente.
+- errores de rate limit activan el modelo alterno
+- el runtime entra en cooldown
+- luego vuelve al modelo principal
+
+## Notas prácticas
+
+- `google` y `openai` son la ruta más simple para arrancar.
+- Bedrock y Anthropic se benefician del saneamiento de historial cross-model.
+- `FALLBACK_COOLDOWN_SECONDS` controla el tiempo antes de restaurar el modelo principal.

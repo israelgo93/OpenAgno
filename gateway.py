@@ -644,13 +644,16 @@ if "telegram" in channels:
 	except ImportError:
 		logger.warning("Telegram no disponible — actualizar agno[os]")
 
-if "ai_sdk" in channels:
+if "agui" in channels:
 	try:
-		from agno.os.interfaces.ai_sdk import AISdk
-		interfaces.append(AISdk(agent=main_agent))
-		logger.info("Canal AI SDK (Vercel) habilitado")
+		from agno.os.interfaces.agui import AGUI
+		interfaces.append(AGUI(agent=main_agent))
+		logger.info("Canal AG-UI habilitado")
 	except ImportError:
-		logger.warning("AI SDK no disponible")
+		logger.warning("AG-UI no disponible. Instalar: pip install ag-ui-protocol")
+
+if "ai_sdk" in channels:
+	logger.warning("El canal 'ai_sdk' ya no esta soportado en Agno 2.x. Usa 'agui'.")
 
 if config.get("a2a", {}).get("enabled", False):
 	try:
