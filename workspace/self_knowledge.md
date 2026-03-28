@@ -76,7 +76,8 @@ execution:
 | `whatsapp` | Cloud API (Meta Business) o QR Link (Baileys bridge) o Dual |
 | `slack` | Slack Bot con scopes OAuth |
 | `telegram` | Bot via @BotFather |
-| `ai_sdk` | Vercel AI SDK (experimental) |
+| `agui` | Interfaz AG-UI (requiere `.[protocols]`) |
+| `a2a` | Protocolo A2A (requiere `a2a.enabled: true` y `.[protocols]`) |
 | Web | Siempre disponible via os.agno.com |
 
 ## Reglas de Auto-Configuración

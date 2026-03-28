@@ -313,20 +313,20 @@ def workspace_warnings(workspace_dir: Optional[str] = None) -> list[str]:
 def print_validation(errors: list[str]) -> None:
 	"""Imprime resultados de validacion con formato."""
 	if not errors:
-		print("\nWorkspace valido - listo para arrancar")
+		print("\nWorkspace valid - ready to start")
 		return
 
-	print(f"\nSe encontraron {len(errors)} error(es) en el workspace:\n")
+	print(f"\nFound {len(errors)} workspace error(s):\n")
 	for i, error in enumerate(errors, 1):
 		print(f"  {i}. {error}")
 	print()
-	print("Corrige estos errores antes de ejecutar gateway.py")
-	print("Tip: ejecuta 'python -m management.cli' para regenerar el workspace")
+	print("Fix these errors before starting OpenAgno.")
+	print("Tip: run `openagno init --template personal_assistant` to regenerate the workspace.")
 
 
 if __name__ == "__main__":
 	errors = validate_workspace()
 	print_validation(errors)
 	for w in workspace_warnings():
-		print(f"  Advertencia: {w}")
+		print(f"  Warning: {w}")
 	sys.exit(1 if errors else 0)

@@ -1,0 +1,51 @@
+---
+title: Contributing
+description: Flujo recomendado para contribuir cambios a OpenAgno.
+---
+
+## Antes de abrir un cambio
+
+1. Crea una rama corta y específica.
+2. Mantén el alcance del cambio acotado.
+3. Si tocas runtime, CLI o docs públicas, actualiza también la documentación relevante.
+
+## Setup local
+
+```bash
+git clone https://github.com/israelgo93/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev,protocols]'
+```
+
+## Validaciones mínimas
+
+```bash
+.venv/bin/python -m pytest -q
+cd docs && npm install && npm run broken-links
+```
+
+## Estándares prácticos
+
+- usa `openagno` como flujo documentado en vez de `management.cli`
+- no documentes capacidades que aún estén en roadmap
+- mantén consistencia entre `README.md`, `docs/` y comportamiento real del repo
+- si agregas un canal o protocolo, actualiza también `workspace/self_knowledge.md`
+
+## Pull requests
+
+Incluye en tu PR:
+
+- resumen corto del problema
+- qué cambió
+- cómo lo validaste
+- riesgos o follow-ups pendientes
+
+## Documentación
+
+Si agregas una página nueva en Mintlify:
+
+- agrega `title` y `description`
+- actualiza `docs/docs.json`
+- usa enlaces internos root-relative como `/quickstart`

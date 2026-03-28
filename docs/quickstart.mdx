@@ -1,15 +1,17 @@
 ---
 title: Inicio rapido
-description: Instalar OpenAgno, crear un workspace usable y levantar el runtime por la ruta vigente.
+description: Instalar OpenAgno desde el repo, crear un workspace y levantar el runtime por la ruta vigente.
 ---
+
+OpenAgno hoy se instala **desde el repositorio**. La publicación a PyPI sigue en preparación para maintainers, así que la ruta pública recomendada continúa siendo `pip install -e .`.
 
 ## Requisitos
 
-- Python 3.11 o superior
-- PostgreSQL con `pgvector` si quieres knowledge vectorial
-- Node.js 18+ solo si usarás WhatsApp QR o Mintlify local
+- Python 3.10 o superior. Python 3.11+ es la opción recomendada.
+- PostgreSQL con `pgvector` si quieres knowledge vectorial.
+- Node.js 18+ solo si usarás WhatsApp QR o validar Mintlify localmente.
 
-## 1. Instala el proyecto
+## Ruta rápida
 
 ```bash
 git clone https://github.com/israelgo93/OpenAgno.git
@@ -17,29 +19,33 @@ cd OpenAgno
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
+openagno init --template personal_assistant
+openagno validate
+openagno start --foreground
 ```
 
-Si también vas a desarrollar o habilitar protocolos avanzados:
+## Ruta para contributors o maintainers
+
+Si además vas a correr tests, preparar builds o habilitar AG-UI/A2A:
 
 ```bash
 pip install -e '.[dev,protocols]'
 ```
 
-## 2. Explora templates disponibles
+Para preparar un build local del paquete:
+
+```bash
+python -m build
+```
+
+## Explora templates disponibles
 
 ```bash
 openagno templates list
+openagno templates show personal_assistant
 ```
 
-## 3. Crea tu workspace
-
-La ruta más simple es copiar un template:
-
-```bash
-openagno init --template personal_assistant
-```
-
-## 4. Completa `.env`
+## Completa `.env`
 
 Variables comunes:
 
@@ -50,13 +56,7 @@ Variables comunes:
 - `TELEGRAM_TOKEN`
 - `OPENAGNO_API_KEY` si quieres proteger rutas custom
 
-## 5. Valida antes de arrancar
-
-```bash
-openagno validate
-```
-
-## 6. Arranca el runtime
+## Arranque recomendado
 
 Foreground:
 
@@ -72,7 +72,7 @@ openagno status
 openagno logs --follow
 ```
 
-## 7. Verifica salud
+## Verifica salud
 
 ```bash
 curl http://127.0.0.1:8000/admin/health
@@ -81,6 +81,7 @@ curl http://127.0.0.1:8000/admin/health
 ## Notas prácticas
 
 - Si eliges `database.type: sqlite`, OpenAgno corre, pero sin knowledge vectorial.
-- Slack y Telegram ya forman parte de la instalación base.
+- Slack y Telegram forman parte de la instalación base del proyecto.
 - `agui` y `a2a` requieren `pip install -e '.[protocols]'`.
-- Si vas a usar WhatsApp Cloud API en local, solo usa `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` en desarrollo.
+- Si vas a usar WhatsApp Cloud API en local, revisa la guía de túneles en [/whatsapp-tunnel](/whatsapp-tunnel).
+- Si prefieres un flujo sin editar código, sigue la guía de [/getting-started-no-code](/getting-started-no-code).

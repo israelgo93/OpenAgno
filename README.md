@@ -26,9 +26,12 @@ OpenAgno hoy no incluye todavía:
 
 ## Instalación
 
+OpenAgno **todavía no se distribuye públicamente vía PyPI**. La ruta recomendada es instalarlo desde el repositorio.
+
 Requisitos mínimos:
 
-- Python 3.11+
+- Python 3.10+
+- Python 3.11+ recomendado
 - PostgreSQL con `pgvector` si quieres knowledge vectorial
 - Node.js 18+ solo si usarás el bridge WhatsApp QR o Mintlify local
 
@@ -43,7 +46,7 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Si vas a desarrollar o usar protocolos avanzados:
+Si vas a desarrollar, preparar builds o usar protocolos avanzados:
 
 ```bash
 pip install -e '.[dev,protocols]'
@@ -145,11 +148,22 @@ Notas:
 
 - Slack y Telegram ya están incluidos en las dependencias base del proyecto.
 - `agui` y `a2a` requieren instalar el extra `.[protocols]`.
-- El canal `ai_sdk` no forma parte del runtime compatible actual de Agno 2.5.10 y no debe usarse.
+- El canal `ai_sdk` no forma parte del runtime compatible actual de Agno y no debe usarse.
 
-## Knowledge vectorial
+## MCP y docs públicas
 
-OpenAgno usa `PgVector` de Agno sobre PostgreSQL/Supabase. Si configuras `database.type: sqlite`, la knowledge vectorial se desactiva por diseño.
+La documentación de OpenAgno ya expone:
+
+- MCP remoto: `https://docs.openagno.com/mcp`
+- índice AI: `https://docs.openagno.com/llms.txt`
+
+## Release prep para maintainers
+
+La publicación pública sigue pendiente, pero puedes validar el empaquetado localmente:
+
+```bash
+python -m build
+```
 
 ## Documentación
 
@@ -159,14 +173,15 @@ Preview local:
 
 ```bash
 cd docs
-npx mintlify dev
+npm install
+npm run dev
 ```
 
 Chequeo de links:
 
 ```bash
 cd docs
-npx mintlify broken-links
+npm run broken-links
 ```
 
 ## Auditoría del plan
