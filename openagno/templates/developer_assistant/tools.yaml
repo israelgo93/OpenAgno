@@ -1,0 +1,21 @@
+builtin:
+  - name: duckduckgo
+    enabled: true
+  - name: crawl4ai
+    enabled: true
+  - name: reasoning
+    enabled: true
+    config:
+      add_instructions: true
+
+optional:
+  - name: workspace
+    enabled: true
+  - name: scheduler_mgmt
+    enabled: false
+  - name: email
+    enabled: false
+  - name: audio
+    enabled: false
+
+custom: []

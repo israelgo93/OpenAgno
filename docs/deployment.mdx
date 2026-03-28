@@ -1,0 +1,68 @@
+---
+title: Despliegue
+description: "Opciones reales de despliegue y operacion: foreground, supervisor, systemd y Docker Compose."
+---
+
+## Opciones disponibles
+
+| Modo | Cuando usarlo |
+|------|----------------|
+| `openagno start --foreground` | Desarrollo local y debugging |
+| `openagno start` | Servidor simple con supervisor local |
+| `systemd` | Linux en produccion |
+| `docker compose` | Entornos contenedorizados |
+
+## Foreground
+
+```bash
+openagno start --foreground
+```
+
+Los logs salen a stdout.
+
+## Supervisor local
+
+`service_manager.py` vigila el gateway, hace health check, reinicia ante caidas y procesa `.reload_requested`.
+
+```bash
+openagno start
+openagno status
+openagno logs --follow
+openagno stop
+```
+
+Tambien puedes usarlo directamente:
+
+```bash
+python service_manager.py start
+python service_manager.py stop
+python service_manager.py restart
+python service_manager.py status
+```
+
+## systemd
+
+```bash
+sudo bash deploy/install-service.sh
+sudo systemctl start openagno
+sudo systemctl status openagno
+journalctl -u openagno -f
+```
+
+Los unit files de ejemplo estan en `deploy/`.
+
+## Docker Compose
+
+```bash
+docker compose up -d db
+docker compose up -d
+docker compose --profile qr up -d
+```
+
+Ajusta perfiles segun necesites solo base de datos, gateway o bridge WhatsApp QR.
+
+## Variables y archivos operativos
+
+- `OPENAGNO_ROOT`: raiz del proyecto para supervisor y CLI
+- `gateway.log`: log del runtime cuando arrancas con supervisor
+- `openagno.pid`: PID actual del proceso supervisado

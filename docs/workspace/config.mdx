@@ -1,0 +1,86 @@
+---
+title: config.yaml
+description: Estructura real de config.yaml, bloques soportados y notas practicas de operacion.
+---
+
+`workspace/config.yaml` agrupa identidad, modelo, base de datos, canales, memoria, scheduler y opciones del runtime.
+
+## Ejemplo
+
+```yaml
+agent:
+	name: AgnoBot
+	id: agnobot-main
+	description: Asistente personal multimodal
+
+model:
+	provider: google
+	id: gemini-2.5-flash
+
+fallback:
+	enabled: true
+	provider: aws_bedrock_claude
+	id: us.anthropic.claude-sonnet-4-6
+
+database:
+	type: local
+	knowledge_table: agnobot_knowledge_contents
+	vector_table: agnobot_knowledge_vectors
+
+vector:
+	search_type: hybrid
+	embedder: text-embedding-3-small
+	max_results: 5
+
+channels:
+	- whatsapp
+
+whatsapp:
+	mode: cloud_api
+
+memory:
+	enable_agentic_memory: true
+	num_history_runs: 5
+
+agentos:
+	id: agnobot-gateway
+	name: AgnoBot Platform
+	port: 8000
+	tracing: true
+	enable_mcp_server: true
+
+scheduler:
+	enabled: true
+	poll_interval: 15
+	timezone: America/Guayaquil
+```
+
+## Bloques soportados
+
+| Bloque | Uso |
+|--------|-----|
+| `agent` | Nombre, id y descripcion del agente principal |
+| `model` | Provider e id del modelo principal |
+| `fallback` | Modelo alterno usado ante rate limit |
+| `database` | Conexion principal y nombres de tablas de knowledge |
+| `vector` | Estrategia de busqueda, embedder y maximo de resultados |
+| `channels` | Lista de canales habilitados |
+| `whatsapp` | Modo `cloud_api`, `qr_link` o `dual` |
+| `memory` | Memoria agentica e historial agregado al contexto |
+| `agentos` | Identidad del OS, puerto, tracing y MCP embebido |
+| `studio` | Habilitacion de Studio registry |
+| `a2a` | Exposicion opcional del protocolo A2A |
+| `scheduler` | Polling y activacion del scheduler |
+| `knowledge` | Auto-ingesta de documentos y URLs |
+| `audio` | STT/TTS para providers no multimodales |
+
+## Notas practicas
+
+- El fallback es **top-level**, no vive dentro de `model`.
+- `database.type: sqlite` desactiva la knowledge vectorial. Para RAG real, usa PostgreSQL/PgVector.
+- El loader trata cualquier tipo distinto de `sqlite` como conexion PostgreSQL-compatible. `local` y `supabase` terminan usando la URL construida desde variables `DB_*`.
+- `FALLBACK_COOLDOWN_SECONDS` controla cuando se vuelve al modelo principal despues de usar fallback.
+- Los bloques de canal deben coincidir con las variables reales de tu `.env`.
+- `agentos.enable_mcp_server` controla si se expone el MCP server embebido del runtime.
+
+Para detalles de provider y credenciales, revisa [Modelos](/models) y [Canales](/channels).

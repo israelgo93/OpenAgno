@@ -1,0 +1,58 @@
+---
+title: MCP
+description: Configurar servidores MCP en OpenAgno y entender como se resuelven en runtime.
+---
+
+OpenAgno puede usar MCP en dos niveles:
+
+1. **Como cliente**, conectandose a servidores externos declarados en `workspace/mcp.yaml`.
+2. **Como servidor**, exponiendo el MCP embebido del runtime cuando `agentos.enable_mcp_server` esta activo.
+
+## Cliente MCP
+
+Ejemplo:
+
+```yaml
+servers:
+  - name: agno_docs
+    transport: streamable-http
+    url: https://docs.agno.com/mcp
+    enabled: true
+  - name: supabase
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@supabase/mcp-server-supabase@latest"
+      - --access-token
+      - ${SUPABASE_ACCESS_TOKEN}
+    enabled: false
+
+expose:
+  enabled: true
+```
+
+## Que soporta el loader
+
+- `streamable-http`
+- `sse`
+- `stdio`
+- variables `${VAR}` resueltas dentro de strings, listas y diccionarios
+- `env` por servidor en `stdio`
+- fusion con integraciones declarativas
+
+## Servidor MCP embebido
+
+Cuando `agentos.enable_mcp_server` esta activo, AgentOS expone su propio MCP server junto con el resto de rutas del runtime.
+
+Eso permite:
+
+- conectar IDEs o clientes MCP externos,
+- usar Studio con el OS local,
+- exponer herramientas y contexto del runtime de forma controlada.
+
+## Recomendaciones
+
+- Usa `streamable-http` para servidores remotos cuando exista soporte oficial.
+- Usa `stdio` para servidores locales que requieran `npx` o binarios del entorno.
+- Si una integracion necesita sus propias credenciales, declara el servidor MCP dentro de `workspace/integrations/<id>/integration.yaml`.

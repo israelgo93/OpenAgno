@@ -1,0 +1,19 @@
+builtin:
+  - name: duckduckgo
+    enabled: true
+  - name: crawl4ai
+    enabled: true
+    config:
+      max_length: 2000
+  - name: reasoning
+    enabled: true
+    config:
+      add_instructions: true
+
+optional:
+  - name: workspace
+    enabled: true
+  - name: audio
+    enabled: false
+
+custom: []

@@ -1,0 +1,26 @@
+templates:
+  - id: personal_assistant
+    name: Asistente Personal
+    description: Agente generalista con busqueda web, razonamiento y scheduler.
+    channels: [whatsapp]
+    tools: [duckduckgo, reasoning, workspace, scheduler_mgmt]
+  - id: customer_support
+    name: Customer Support
+    description: Agente con RAG y canales de atencion para soporte al cliente.
+    channels: [whatsapp, slack]
+    tools: [duckduckgo, crawl4ai, reasoning, workspace]
+  - id: research_agent
+    name: Research Agent
+    description: Agente orientado a investigacion con crawling y fuentes academicas.
+    channels: [slack]
+    tools: [duckduckgo, crawl4ai, reasoning, wikipedia, arxiv]
+  - id: sales_agent
+    name: Sales Agent
+    description: Agente comercial omnicanal con seguimiento y mensajes salientes.
+    channels: [whatsapp, slack]
+    tools: [duckduckgo, reasoning, scheduler_mgmt, email]
+  - id: developer_assistant
+    name: Developer Assistant
+    description: Agente tecnico para soporte de desarrollo, debugging y automatizacion interna.
+    channels: [slack]
+    tools: [duckduckgo, crawl4ai, reasoning, workspace]

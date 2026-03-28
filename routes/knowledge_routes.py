@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text, create_engine
 
@@ -34,12 +34,14 @@ class IngestUrlsRequest(BaseModel):
 	urls: list[UrlEntry]
 
 
-def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
+def create_knowledge_router(knowledge: Knowledge, limiter=None) -> APIRouter:
 	"""Crea el router de Knowledge con endpoints REST funcionales."""
 	router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+	limit = limiter.limit if limiter is not None else (lambda _rule: (lambda func: func))
 
 	@router.post("/upload", dependencies=[Depends(verify_api_key)])
-	async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:
+	@limit("10/minute")
+	async def upload_document(request: Request, file: UploadFile = File(...)) -> dict[str, str]:
 		"""Recibe un archivo y lo inserta en la Knowledge Base."""
 		allowed_extensions = {".pdf", ".txt", ".md", ".csv", ".docx", ".json"}
 		file_ext = Path(file.filename or "").suffix.lower()
@@ -74,10 +76,11 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			Path(tmp_path).unlink(missing_ok=True)
 
 	@router.post("/ingest-urls", dependencies=[Depends(verify_api_key)])
-	async def ingest_urls(request: IngestUrlsRequest) -> dict[str, object]:
+	@limit("10/minute")
+	async def ingest_urls(request: Request, payload: IngestUrlsRequest) -> dict[str, object]:
 		"""Ingesta una lista de URLs en la Knowledge Base."""
 		results: list[dict[str, str]] = []
-		for entry in request.urls:
+		for entry in payload.urls:
 			if not entry.url:
 				results.append({"url": "", "status": "error", "detail": "URL vacia"})
 				continue
@@ -94,7 +97,8 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 		return {"results": results, "total": len(results), "ok": ok_count}
 
 	@router.get("/list", dependencies=[Depends(verify_api_key)])
-	async def list_documents() -> dict[str, object]:
+	@limit("30/minute")
+	async def list_documents(request: Request) -> dict[str, object]:
 		"""Lista documentos unicos en la Knowledge Base."""
 		try:
 			if hasattr(knowledge, "contents_db") and knowledge.contents_db is not None:
@@ -127,7 +131,8 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			return {"documents": [], "count": 0, "message": "Knowledge table no inicializada"}
 
 	@router.delete("/{doc_name}", dependencies=[Depends(verify_api_key)])
-	async def delete_document(doc_name: str) -> dict[str, str]:
+	@limit("10/minute")
+	async def delete_document(request: Request, doc_name: str) -> dict[str, str]:
 		"""Elimina un documento de la Knowledge Base por nombre."""
 		try:
 			if hasattr(knowledge, "contents_db") and knowledge.contents_db is not None:
@@ -178,11 +183,12 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 			raise HTTPException(status_code=500, detail=str(e))
 
 	@router.post("/search", dependencies=[Depends(verify_api_key)])
-	async def search_knowledge(request: SearchRequest) -> dict[str, object]:
+	@limit("30/minute")
+	async def search_knowledge(request: Request, payload: SearchRequest) -> dict[str, object]:
 		"""Busqueda semantica en la Knowledge Base."""
 		try:
 			results = knowledge.search(
-				query=request.query, num_documents=request.max_results
+				query=payload.query, max_results=payload.max_results
 			)
 			documents = []
 			for doc in results:
@@ -191,11 +197,11 @@ def create_knowledge_router(knowledge: Knowledge) -> APIRouter:
 					"name": doc.name if hasattr(doc, "name") else "unknown",
 					"score": getattr(doc, "score", None),
 				})
-			return {"query": request.query, "results": documents, "count": len(documents)}
+			return {"query": payload.query, "results": documents, "count": len(documents)}
 		except HTTPException:
 			raise  # F7 — 7.6.3: SIEMPRE re-raise
 		except Exception as e:
 			logger.warning(f"Error en busqueda: {e}")
-			return {"query": request.query, "results": [], "count": 0}
+			return {"query": payload.query, "results": [], "count": 0}
 
 	return router

@@ -1,0 +1,85 @@
+---
+title: API HTTP
+description: Endpoints custom de OpenAgno mas las rutas nativas de AgentOS que quedan expuestas por el runtime.
+---
+
+Base URL tipica: `http://localhost:8000` (ajusta host y puerto en despliegue).
+
+## Rutas custom de OpenAgno
+
+### Admin
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/admin/health` | Estado del runtime, agentes, canales, modelo y scheduler |
+| `POST` | `/admin/reload` | Solicitar reload al supervisor |
+| `POST` | `/admin/fallback/activate` | Activar fallback manualmente |
+| `POST` | `/admin/fallback/restore` | Restaurar modelo principal |
+
+Estas rutas tienen rate limiting. Actualmente no usan `X-API-Key`; protegelas con red privada o reverse proxy si las expones en produccion.
+
+### Knowledge custom
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `POST` | `/knowledge/upload` | Subir documento |
+| `POST` | `/knowledge/ingest-urls` | Ingestar URLs |
+| `GET` | `/knowledge/list` | Listar documentos |
+| `DELETE` | `/knowledge/{doc_name}` | Eliminar documento |
+| `POST` | `/knowledge/search` | Busqueda semantica |
+
+Si defines `OPENAGNO_API_KEY`, estas rutas requieren el header `X-API-Key`.
+
+### WhatsApp QR
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/whatsapp-qr/status` | Estado del bridge QR |
+| `GET` | `/whatsapp-qr/code` | Pagina HTML con QR |
+| `GET` | `/whatsapp-qr/code/json` | QR como JSON |
+| `POST` | `/whatsapp-qr/incoming` | Mensajes entrantes del bridge QR |
+
+### WhatsApp Cloud API
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta |
+| `POST` | `/whatsapp/webhook` | Recepcion de eventos de WhatsApp Cloud API |
+
+## Rutas nativas de AgentOS
+
+El runtime tambien expone rutas propias de AgentOS. Las mas utiles para operacion son:
+
+| Grupo | Rutas principales |
+|-------|-------------------|
+| Agentes | `/agents`, `/agents/{agent_id}/runs` |
+| Teams | `/teams`, `/teams/{team_id}/runs` |
+| Sesiones | `/sessions`, `/sessions/{session_id}`, `/sessions/{session_id}/runs` |
+| Memorias | `/memories`, `/memory_topics`, `/optimize-memories` |
+| Schedules | `/schedules`, `/schedules/{schedule_id}`, `/schedules/{schedule_id}/trigger` |
+| Registry / config | `/registry`, `/config`, `/components`, `/models` |
+| Observabilidad | `/health`, `/metrics`, `/traces`, `/eval-runs` |
+
+## Documentacion generada
+
+- `/docs`
+- `/redoc`
+- `/openapi.json`
+
+## Ejemplos
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+Busqueda custom de knowledge:
+
+```bash
+curl -X POST http://127.0.0.1:8000/knowledge/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"OpenAgno","max_results":3}'
+```
+
+Para seguridad, rate limit y firma de WhatsApp, revisa [Seguridad](/security).

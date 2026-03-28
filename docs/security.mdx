@@ -1,0 +1,66 @@
+---
+title: Seguridad
+description: API key, firmas webhook, replay protection y limites operativos reales del proyecto.
+---
+
+## API Key
+
+Las rutas custom de knowledge pueden protegerse con `X-API-Key`.
+
+```bash
+openssl rand -hex 32
+```
+
+En `.env`:
+
+```bash
+OPENAGNO_API_KEY=tu_key_generada
+```
+
+Si `OPENAGNO_API_KEY` no esta definida, las rutas custom de knowledge quedan abiertas en modo desarrollo.
+
+## Rutas admin
+
+Las rutas `/admin/*` tienen rate limiting, pero actualmente no pasan por `verify_api_key`.
+
+En produccion:
+
+- no las expongas sin control de red,
+- protégelas con reverse proxy, firewall o autenticacion perimetral.
+
+## WhatsApp Cloud API
+
+Para `POST /whatsapp/webhook`:
+
+- la firma se valida con `WHATSAPP_APP_SECRET`,
+- el dedup por `message_id` ocurre solo si la firma ya paso,
+- los replays completos se responden como `duplicate_ignored`,
+- los payloads mixtos filtran solo los mensajes repetidos.
+
+Solo para desarrollo local puedes usar:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+## Rate limiting
+
+OpenAgno aplica rate limiting a:
+
+- rutas custom de admin,
+- rutas custom de knowledge.
+
+No se aplica rate limiting al webhook de WhatsApp Cloud API para no degradar throughput ni agravar retries de Meta.
+
+## Inyeccion SQL
+
+Las rutas custom de knowledge aplican una whitelist de tablas como:
+
+- `agnobot_knowledge_contents`
+- `agnobot_knowledge_vectors`
+
+Cualquier referencia fuera de esa lista se rechaza.
+
+## Herramientas de riesgo
+
+Herramientas como `shell`, `python_tools` o STT/TTS deben habilitarse solo cuando el entorno y las politicas de su organizacion lo permitan.

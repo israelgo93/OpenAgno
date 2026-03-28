@@ -1,0 +1,54 @@
+---
+title: Knowledge base
+description: Como funciona la knowledge base, que necesita para activarse y como operarla desde API y workspace.
+---
+
+OpenAgno construye la knowledge base cuando la base no es SQLite y hay una conexion PostgreSQL-compatible disponible.
+
+## Requisitos reales
+
+- `database.type` distinto de `sqlite`
+- Tabla de contenidos y tabla vectorial configurables desde `config.yaml`
+- `OPENAI_API_KEY` si usas el embedder por defecto `text-embedding-3-small`
+
+## Configuracion
+
+```yaml
+database:
+	type: local
+	knowledge_table: agnobot_knowledge_contents
+	vector_table: agnobot_knowledge_vectors
+
+vector:
+	search_type: hybrid
+	embedder: text-embedding-3-small
+	max_results: 5
+
+knowledge:
+	auto_ingest_docs: true
+	auto_ingest_urls: true
+	skip_if_exists: true
+```
+
+## Fuentes de ingesta
+
+- `workspace/knowledge/docs/`
+- `workspace/knowledge/urls.yaml`
+- API custom de `/knowledge/*`
+
+## Endpoints custom mas utiles
+
+| Metodo | Ruta | Uso |
+|--------|------|-----|
+| `POST` | `/knowledge/upload` | Subir un documento |
+| `POST` | `/knowledge/ingest-urls` | Ingestar URLs en lote |
+| `GET` | `/knowledge/list` | Listar documentos |
+| `DELETE` | `/knowledge/{doc_name}` | Eliminar por nombre |
+| `POST` | `/knowledge/search` | Buscar semanticamente |
+
+## Notas practicas
+
+- La ruta custom `/knowledge/search` usa `max_results`.
+- Si defines `OPENAGNO_API_KEY`, las rutas custom de knowledge exigen `X-API-Key`.
+- Las tablas custom de knowledge estan protegidas por whitelist para evitar consultas sobre tablas arbitrarias.
+- AgentOS tambien expone rutas nativas de knowledge (`/knowledge/content`, `/knowledge/config`, etc.). Si vas a operar contenido de forma intensiva, revisa tambien `/api`.

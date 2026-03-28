@@ -1,0 +1,64 @@
+---
+title: Estructura del repositorio
+description: Mapa del repositorio con foco en runtime, CLI, docs y workspace.
+---
+
+```text
+OpenAgno/
+  gateway.py
+  loader.py
+  security.py
+  service_manager.py
+  setup.sh
+  pyproject.toml
+  requirements.txt
+  requirements.lock
+  openagno/
+    cli.py
+    commands/
+    core/
+    templates/
+  tools/
+    workspace_tools.py
+    scheduler_tools.py
+    audio_tools.py
+  workspace/
+    config.yaml
+    instructions.md
+    tools.yaml
+    mcp.yaml
+    self_knowledge.md
+    knowledge/docs/
+    knowledge/urls.yaml
+    agents/
+    schedules.yaml
+    integrations/
+  routes/
+    knowledge_routes.py
+  management/
+    cli.py
+    validator.py
+    admin.py
+  bridges/
+    whatsapp-qr/
+  tests/
+  deploy/
+  docker-compose.yml
+  .env.example
+  docs/
+    docs.json
+    package.json
+```
+
+## Que toca cada area
+
+- `openagno/`: CLI empaquetada y templates distribuidos con el proyecto
+- `gateway.py`: runtime principal, interfaces, dedup, rate limit, admin
+- `loader.py`: traduccion del workspace a objetos Agno
+- `workspace/`: configuracion declarativa del agente
+- `routes/`: rutas REST custom agregadas sobre AgentOS
+- `management/`: utilidades legacy e interactivas
+- `tests/`: regresiones del runtime, CLI y helpers
+- `docs/`: sitio Mintlify
+
+Para la relacion entre componentes, revisa [Arquitectura](/architecture).

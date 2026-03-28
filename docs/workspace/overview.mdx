@@ -1,0 +1,64 @@
+---
+title: Descripcion del workspace
+description: Que archivos vive en el workspace, que consume el runtime y que convenciones conviene respetar.
+---
+
+El **workspace** es el contrato principal del proyecto. Define identidad, modelo, tools, knowledge, sub-agentes, teams y canales.
+
+## Convencion recomendada
+
+Para el uso mas estable del proyecto, mantén el workspace en:
+
+```text
+OPENAGNO_ROOT/workspace
+```
+
+Hay una diferencia importante:
+
+- `loader.py` y `management.validator` aceptan `AGNOBOT_WORKSPACE`.
+- La CLI empaquetada y `WorkspaceTools` operan sobre `OPENAGNO_ROOT/workspace`.
+
+Si quieres evitar inconsistencias, usa siempre la estructura estandar del repo.
+
+## Archivos principales
+
+| Archivo | Funcion |
+|---------|---------|
+| `workspace/config.yaml` | Configuracion central: modelo, base de datos, canales, memoria, audio |
+| `workspace/instructions.md` | Personalidad, reglas y capacidades del agente |
+| `workspace/tools.yaml` | Herramientas habilitadas (builtin y opcionales) |
+| `workspace/mcp.yaml` | Servidores MCP externos |
+| `workspace/self_knowledge.md` | Auto-consciencia: proveedores, tools y canales validos |
+| `workspace/knowledge/docs/` | Documentos para RAG |
+| `workspace/knowledge/urls.yaml` | URLs para auto-ingesta |
+| `workspace/agents/*.yaml` | Definiciones de sub-agentes |
+| `workspace/agents/teams.yaml` | Equipos multi-agente y modos de coordinacion |
+| `workspace/schedules.yaml` | Tareas cron programadas |
+| `workspace/integrations/` | Integraciones declarativas con env propio |
+
+## Que archivos se leen al arranque
+
+- `config.yaml`
+- `instructions.md`
+- `tools.yaml`
+- `mcp.yaml`
+- `self_knowledge.md` si existe
+- `knowledge/docs/*`
+- `knowledge/urls.yaml`
+- `agents/*.yaml`
+- `agents/teams.yaml`
+- `schedules.yaml`
+- integraciones habilitadas en `workspace/integrations/*`
+
+## Que archivos suele mutar el sistema
+
+- `workspace/agents/*.yaml` cuando creas sub-agentes con tools de workspace o con `openagno create agent`
+- `workspace/tools.yaml` y `workspace/config.yaml` cuando usas `openagno add ...`
+- `.reload_requested` en la raiz del proyecto cuando un agente solicita reload
+- `backups/` cuando `WorkspaceTools` guarda respaldos
+
+## Siguientes lecturas
+
+- [config.yaml](/workspace/config)
+- [Templates](/workspace/templates)
+- [Integraciones declarativas](/workspace/integrations)

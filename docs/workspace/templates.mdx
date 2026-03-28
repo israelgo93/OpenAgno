@@ -1,0 +1,39 @@
+---
+title: Templates
+description: Templates empaquetados de OpenAgno y cuando conviene usar cada uno.
+---
+
+OpenAgno incluye templates versionados dentro del paquete `openagno.templates`. Se usan con:
+
+```bash
+openagno templates list
+openagno templates show personal_assistant
+openagno init --template personal_assistant
+```
+
+## Templates incluidos
+
+| Template | Uso recomendado | Canales base | Enfoque |
+|----------|-----------------|--------------|---------|
+| `personal_assistant` | Asistente general | WhatsApp | Busqueda, reasoning y scheduler |
+| `customer_support` | Soporte con knowledge | WhatsApp, Slack | RAG y atencion al cliente |
+| `research_agent` | Investigacion | Slack | Web, crawling y fuentes academicas |
+| `sales_agent` | Seguimiento comercial | WhatsApp, Slack | Mensajes salientes y seguimiento |
+| `developer_assistant` | Soporte tecnico interno | Slack | Debugging, documentacion y automatizacion |
+
+## Que copia un template
+
+Cada template genera un `workspace/` completo con:
+
+- `config.yaml`
+- `instructions.md`
+- `tools.yaml`
+- `mcp.yaml`
+- `knowledge/urls.yaml`
+- `agents/teams.yaml`
+
+## Recomendaciones
+
+- Usa templates para el primer arranque o para nuevas instancias del proyecto.
+- Si ya tienes un workspace y quieres reemplazarlo, usa `openagno init --template ... --force`.
+- Si necesitas cambios finos, copia desde template y luego ajusta `workspace/config.yaml`, `tools.yaml` e instrucciones.

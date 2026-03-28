@@ -1,0 +1,60 @@
+---
+title: Studio y AgentOSClient
+description: Como conectar Studio al OS local y que rutas nativas de AgentOS ya vienen expuestas.
+---
+
+## Conectar Studio
+
+1. Inicia el gateway: `openagno start --foreground`
+2. Abre [os.agno.com](https://os.agno.com) y elige Add OS &gt; Local
+3. Introduce `http://localhost:8000`
+
+Studio muestra agentes, teams, sesiones, memorias y herramientas expuestas por AgentOS.
+
+## Registry
+
+OpenAgno construye un `Registry` cuando:
+
+- `studio.enabled: true`
+- la base no es SQLite
+
+Si el proyecto corre con SQLite, el runtime sigue levantando, pero el registry de Studio no se inicializa con la misma capacidad.
+
+## AgentOSClient (Python)
+
+```python
+from agno.os.client import AgentOSClient
+
+client = AgentOSClient(base_url="http://localhost:8000")
+
+# Configuracion del OS
+config = await client.aget_config()
+
+# Listar agentes
+agents = client.get_agents()
+
+# Ejecutar un agente
+response = await client.run_agent(
+	agent_id="agnobot-main",
+	message="Hola, que puedes hacer?",
+)
+
+# Sesiones y memorias
+sessions = client.get_sessions(user_id="user123")
+memories = client.get_memories(user_id="user123")
+```
+
+## Rutas nativas utiles
+
+Ademas de Studio, el runtime expone rutas AgentOS como:
+
+- `/agents`
+- `/teams`
+- `/sessions`
+- `/memories`
+- `/registry`
+- `/config`
+- `/health`
+- `/openapi.json`
+
+Consulta `/api` para una vista consolidada.

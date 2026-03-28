@@ -1,0 +1,54 @@
+---
+title: Herramientas
+description: Tools builtin, opcionales y como se combinan con integraciones y servidores MCP.
+---
+
+## Builtin
+
+Activas segun `tools.yaml` (seccion `builtin`).
+
+| Tool | Descripcion |
+|------|-------------|
+| `duckduckgo` | Busqueda web |
+| `crawl4ai` | Scraping y extraccion de contenido |
+| `reasoning` | Razonamiento paso a paso |
+
+## Opcionales
+
+Se habilitan en `tools.yaml` bajo `optional` con `enabled: true`.
+
+| Tool | Descripcion | Requisitos |
+|------|-------------|------------|
+| `workspace` | Auto-configuracion del workspace (CRUD) | Ninguno |
+| `scheduler_mgmt` | Gestion de crons via API REST | Ninguno |
+| `yfinance` | Datos financieros | `pip install yfinance` |
+| `wikipedia` | Wikipedia | `pip install wikipedia` |
+| `arxiv` | Papers academicos | `pip install arxiv` |
+| `calculator` | Calculadora | Ninguno |
+| `github` | GitHub | `PyGithub`, `GITHUB_TOKEN` |
+| `email` | Correo (Gmail) | Variables de envio configuradas |
+| `tavily` | Busqueda avanzada | `TAVILY_API_KEY` |
+| `audio` | STT y TTS (OpenAI) | `OPENAI_API_KEY` |
+| `file_tools` / `python_tools` / `shell` | Archivos, Python, shell | Revisar riesgo de seguridad |
+
+## MCP
+
+Los servidores MCP se declaran en `workspace/mcp.yaml` y se fusionan con integraciones bajo `workspace/integrations/`.
+
+Transportes soportados por OpenAgno:
+
+- `streamable-http`
+- `sse`
+- `stdio`
+
+Detalles utiles:
+
+- La resolucion de `${VAR}` funciona en strings, diccionarios y listas.
+- En `stdio`, OpenAgno respeta `command`, `args` y `env`.
+- En `streamable-http` y `sse`, OpenAgno construye `server_params` con `url` y `headers`.
+
+## Buenas practicas
+
+- Mantén `workspace` y `scheduler_mgmt` solo en entornos donde realmente quieres auto-modificacion del sistema.
+- Activa `shell`, `python_tools` y `file_tools` solo en entornos controlados.
+- Si una tool necesita secretos, prefiere cargarlos desde `.env` o desde una integracion declarativa.

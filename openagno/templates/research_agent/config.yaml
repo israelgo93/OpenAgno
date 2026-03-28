@@ -1,0 +1,40 @@
+agent:
+  name: OpenAgno Research Agent
+  id: openagno-research-main
+  description: Agente de investigacion con busqueda web, crawling y fuentes academicas.
+
+model:
+  provider: google
+  id: gemini-2.5-flash
+
+database:
+  type: local
+  knowledge_table: agnobot_knowledge_contents
+  vector_table: agnobot_knowledge_vectors
+
+vector:
+  search_type: hybrid
+  embedder: text-embedding-3-small
+  max_results: 8
+
+channels:
+  - slack
+
+memory:
+  enable_agentic_memory: true
+  num_history_runs: 5
+
+agentos:
+  id: openagno-research-gateway
+  name: OpenAgno Research Agent
+  port: 8000
+  tracing: true
+  enable_mcp_server: true
+
+studio:
+  enabled: true
+
+knowledge:
+  auto_ingest_docs: true
+  auto_ingest_urls: true
+  skip_if_exists: true

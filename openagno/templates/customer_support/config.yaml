@@ -1,0 +1,44 @@
+agent:
+  name: OpenAgno Customer Support
+  id: openagno-support-main
+  description: Agente de soporte 24/7 con base de conocimiento y canales de atencion.
+
+model:
+  provider: google
+  id: gemini-2.5-flash
+
+database:
+  type: local
+  knowledge_table: agnobot_knowledge_contents
+  vector_table: agnobot_knowledge_vectors
+
+vector:
+  search_type: hybrid
+  embedder: text-embedding-3-small
+  max_results: 5
+
+channels:
+  - whatsapp
+  - slack
+
+whatsapp:
+  mode: cloud_api
+
+memory:
+  enable_agentic_memory: true
+  num_history_runs: 5
+
+agentos:
+  id: openagno-support-gateway
+  name: OpenAgno Customer Support
+  port: 8000
+  tracing: true
+  enable_mcp_server: true
+
+studio:
+  enabled: true
+
+knowledge:
+  auto_ingest_docs: true
+  auto_ingest_urls: true
+  skip_if_exists: true

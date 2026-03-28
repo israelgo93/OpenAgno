@@ -1,0 +1,40 @@
+agent:
+  name: OpenAgno Developer Assistant
+  id: openagno-developer-main
+  description: Agente tecnico para soporte de desarrollo, debugging y documentacion interna.
+
+model:
+  provider: google
+  id: gemini-2.5-flash
+
+database:
+  type: local
+  knowledge_table: agnobot_knowledge_contents
+  vector_table: agnobot_knowledge_vectors
+
+vector:
+  search_type: hybrid
+  embedder: text-embedding-3-small
+  max_results: 6
+
+channels:
+  - slack
+
+memory:
+  enable_agentic_memory: true
+  num_history_runs: 6
+
+agentos:
+  id: openagno-developer-gateway
+  name: OpenAgno Developer Assistant
+  port: 8000
+  tracing: true
+  enable_mcp_server: true
+
+studio:
+  enabled: true
+
+knowledge:
+  auto_ingest_docs: true
+  auto_ingest_urls: true
+  skip_if_exists: true

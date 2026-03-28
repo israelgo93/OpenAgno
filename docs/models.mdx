@@ -1,0 +1,38 @@
+---
+title: Modelos
+description: Providers soportados, credenciales y comportamiento del fallback en runtime.
+---
+
+Cualquier modelo puede usarse como principal o como **fallback**. El fallback se activa automaticamente ante rate limit y el principal se restaura tras el cooldown (`FALLBACK_COOLDOWN_SECONDS`, por defecto 60 segundos).
+
+| Provider | Ejemplos | API Key / credenciales |
+|----------|----------|-------------------------|
+| `google` | `gemini-2.5-flash` (por defecto), `gemini-2.5-pro` | `GOOGLE_API_KEY` |
+| `openai` | `gpt-4.1`, `gpt-4o`, `gpt-4o-mini` | `OPENAI_API_KEY` |
+| `anthropic` | `claude-sonnet-4`, `claude-opus-4` | `ANTHROPIC_API_KEY` |
+| `aws_bedrock_claude` | `us.anthropic.claude-sonnet-4-6`, etc. | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| `aws_bedrock` | `amazon.nova-pro-v1:0` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+
+## Notas importantes
+
+- `google` y `openai` son los caminos mas simples para empezar.
+- `AWS_REGION` controla la region de Bedrock si no la resuelves en el entorno o proveedor.
+- Los providers tipo Anthropic/Bedrock son los que mas se benefician del saneamiento de historial cross-model implementado por OpenAgno.
+- El bloque `audio` del workspace es especialmente util cuando el provider activo no soporta audio nativo y necesitas STT/TTS.
+
+## Fallback
+
+El bloque `fallback` vive a nivel raiz de `config.yaml`, por ejemplo:
+
+```yaml
+fallback:
+	enabled: true
+	provider: aws_bedrock_claude
+	id: us.anthropic.claude-sonnet-4-6
+```
+
+Cuando esta habilitado:
+
+- los errores tipo rate limit activan el modelo de respaldo,
+- el runtime entra en cooldown,
+- luego vuelve al modelo principal automaticamente.

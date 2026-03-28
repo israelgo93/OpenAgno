@@ -1,0 +1,15 @@
+{
+	"name": "openagno-docs",
+	"private": true,
+	"description": "Documentacion OpenAgno (Mintlify)",
+	"engines": {
+		"node": ">=18.0.0"
+	},
+	"scripts": {
+		"dev": "mintlify dev",
+		"broken-links": "mintlify broken-links"
+	},
+	"devDependencies": {
+		"mintlify": "^4.2.459"
+	}
+}

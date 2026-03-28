@@ -18,10 +18,13 @@ from loader import (
     load_yaml,
     build_db_url,
     build_tools,
+    build_mcp_tools,
     _resolve_env,
     _resolve_config,
     BUILTIN_TOOL_MAP,
+    sanitize_history_for_provider,
 )
+from agno.models.message import Message
 
 
 class TestResolveEnv:
@@ -56,6 +59,12 @@ class TestResolveConfig:
         result = _resolve_config({"num": 42, "flag": True})
         assert result["num"] == 42
         assert result["flag"] is True
+
+    def test_resolve_lists_recursively(self, env_vars):
+        env_vars(TOKEN="abc123")
+        result = _resolve_config({"args": ["--token", "${TOKEN}"], "nested": [{"value": "${TOKEN}"}]})
+        assert result["args"] == ["--token", "abc123"]
+        assert result["nested"][0]["value"] == "abc123"
 
 
 class TestLoadYaml:
@@ -160,3 +169,57 @@ class TestBuiltinToolMap:
     def test_builtin_factories_callable(self):
         for name, factory in BUILTIN_TOOL_MAP.items():
             assert callable(factory), f"{name} factory no es callable"
+
+
+class TestBuildMcpTools:
+    """Tests para MCPTools declarativos."""
+
+    def test_stdio_uses_command_and_args(self, env_vars):
+        env_vars(SUPABASE_ACCESS_TOKEN="token-123")
+        tools = build_mcp_tools({
+            "servers": [
+                {
+                    "name": "supabase",
+                    "enabled": True,
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@supabase/mcp-server-supabase@latest", "--access-token", "${SUPABASE_ACCESS_TOKEN}"],
+                }
+            ]
+        })
+        assert len(tools) == 1
+        server_params = tools[0].server_params
+        assert server_params.command == "npx"
+        assert server_params.args[-1] == "token-123"
+
+
+class TestSanitizeHistory:
+    """Tests para saneamiento cross-model."""
+
+    def test_keeps_history_for_non_anthropic_like_provider(self):
+        messages = [
+            Message(role="assistant", content="ok"),
+            Message(role="tool", content="{}", tool_call_id="call-1"),
+        ]
+        sanitized = sanitize_history_for_provider(messages, "google")
+        assert len(sanitized) == 2
+
+    def test_removes_invalid_tool_messages_for_claude(self):
+        messages = [
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {"id": {"bad": "id"}, "function": {"name": "search", "arguments": "{}"}},
+                    {"id": "call-2", "function": {"name": "search", "arguments": "{}"}},
+                ],
+            ),
+            Message.model_construct(role="tool", content='{"ok": true}', tool_call_id={"bad": "id"}),
+            Message(role="tool", content='{"ok": true}', tool_call_id="call-2"),
+        ]
+        sanitized = sanitize_history_for_provider(messages, "anthropic")
+        assert len(sanitized) == 2
+        assert sanitized[0].tool_calls == [
+            {"id": "call-2", "function": {"name": "search", "arguments": "{}"}}
+        ]
+        assert sanitized[1].tool_call_id == "call-2"

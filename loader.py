@@ -20,6 +20,7 @@ import os
 import re
 import yaml
 from pathlib import Path
+from copy import deepcopy
 from typing import Any, Optional, Union
 
 from dotenv import load_dotenv
@@ -33,7 +34,8 @@ from agno.knowledge.knowledge import Knowledge
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.vectordb.pgvector import PgVector, SearchType
 from agno.memory import MemoryManager
-from agno.tools.mcp import MCPTools
+from agno.models.message import Message
+from agno.tools.mcp import MCPTools, SSEClientParams, StreamableHTTPClientParams
 from mcp import StdioServerParameters
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.crawl4ai import Crawl4aiTools
@@ -48,6 +50,7 @@ WORKSPACE_DIR = Path(os.getenv("AGNOBOT_WORKSPACE", "workspace"))
 _OPENAGNO_REPO_ROOT = Path(__file__).resolve().parent
 
 ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+HISTORY_SANITIZE_PROVIDERS = {"anthropic", "aws_bedrock", "aws_bedrock_claude"}
 
 
 def _resolve_env(value: str) -> str:
@@ -61,17 +64,20 @@ def _resolve_env(value: str) -> str:
 	return ENV_VAR_PATTERN.sub(replacer, value)
 
 
+def _resolve_value(value: Any) -> Any:
+	"""Resuelve referencias ${VAR} en strings, dicts y listas."""
+	if isinstance(value, str):
+		return _resolve_env(value)
+	if isinstance(value, dict):
+		return {k: _resolve_value(v) for k, v in value.items()}
+	if isinstance(value, list):
+		return [_resolve_value(v) for v in value]
+	return value
+
+
 def _resolve_config(config: dict[str, Any]) -> dict[str, Any]:
 	"""Resuelve todas las referencias ${VAR} en un dict."""
-	resolved: dict[str, Any] = {}
-	for k, v in config.items():
-		if isinstance(v, str):
-			resolved[k] = _resolve_env(v)
-		elif isinstance(v, dict):
-			resolved[k] = _resolve_config(v)
-		else:
-			resolved[k] = v
-	return resolved
+	return {k: _resolve_value(v) for k, v in config.items()}
 
 
 def load_yaml(filename: str) -> dict[str, Any]:
@@ -437,39 +443,130 @@ def build_mcp_tools(mcp_config: dict[str, Any]) -> list[MCPTools]:
 
 		if transport in ("streamable-http", "sse"):
 			url = _resolve_env(server.get("url", ""))
+			headers = _resolve_config(server.get("headers", {}))
 			if url:
 				try:
-					mcp_tools.append(MCPTools(transport=transport, url=url))
+					if transport == "sse":
+						server_params = SSEClientParams(url=url, headers=headers or None)
+					else:
+						server_params = StreamableHTTPClientParams(url=url, headers=headers or None)
+					mcp_tools.append(MCPTools(transport=transport, server_params=server_params))
 					logger.info(f"MCP '{name}' ({transport}): {url}")
 				except Exception as e:
 					logger.warning(f"MCP '{name}' fallo al inicializar: {e}")
 
 		elif transport == "stdio":
-			command_str = _resolve_env(server.get("command", ""))
-			if not command_str:
+			command = _resolve_env(server.get("command", ""))
+			raw_args = server.get("args", [])
+			args = _resolve_value(raw_args) if isinstance(raw_args, list) else []
+			env = _resolve_config(server.get("env", {}))
+			if not command:
 				continue
-
-			parts = command_str.split()
-			command = parts[0] if parts else ""
-			args = parts[1:] if len(parts) > 1 else []
-			env = {**os.environ, **_resolve_config(server.get("env", {}))}
 
 			try:
 				server_params = StdioServerParameters(
 					command=command,
 					args=args,
-					env=env,
+					env=env or None,
 				)
 				mcp_tool = MCPTools(
 					transport="stdio",
 					server_params=server_params,
 				)
 				mcp_tools.append(mcp_tool)
-				logger.info(f"MCP '{name}' (stdio): {command}")
+				logger.info(f"MCP '{name}' (stdio): {command} {' '.join(args[:3])}".rstrip())
 			except Exception as e:
 				logger.warning(f"MCP '{name}' fallo al inicializar: {e}")
 
 	return mcp_tools
+
+
+def detect_model_provider(model: Any) -> str:
+	"""Infiere el provider a partir del tipo de modelo Agno activo."""
+	module_name = getattr(type(model), "__module__", "")
+	class_name = getattr(type(model), "__name__", "").lower()
+
+	if ".models.google." in module_name:
+		return "google"
+	if ".models.openai." in module_name:
+		return "openai"
+	if ".models.anthropic." in module_name:
+		return "anthropic"
+	if ".models.aws." in module_name:
+		return "aws_bedrock_claude" if "claude" in class_name else "aws_bedrock"
+
+	return module_name.rsplit(".", 1)[-1] if module_name else "unknown"
+
+
+def _is_valid_tool_call_id(value: Any) -> bool:
+	return isinstance(value, str) and bool(value.strip())
+
+
+def sanitize_history_for_provider(messages: list[Message], provider: str) -> list[Message]:
+	"""Limpia tool calls/resultados incompatibles antes de enviarlos al provider."""
+	if provider not in HISTORY_SANITIZE_PROVIDERS:
+		return messages
+
+	sanitized: list[Message] = []
+	valid_tool_call_ids: set[str] = set()
+
+	for message in messages:
+		if message.role == "assistant" and message.tool_calls:
+			message_copy = deepcopy(message)
+			filtered_tool_calls = []
+			for tool_call in message.tool_calls:
+				tool_call_id = tool_call.get("id") if isinstance(tool_call, dict) else None
+				if _is_valid_tool_call_id(tool_call_id):
+					filtered_tool_calls.append(tool_call)
+					valid_tool_call_ids.add(tool_call_id)
+
+			message_copy.tool_calls = filtered_tool_calls or None
+			has_content = bool(message_copy.get_content_string().strip())
+			if message_copy.tool_calls or has_content:
+				sanitized.append(message_copy)
+			continue
+
+		if message.role == "tool":
+			if not _is_valid_tool_call_id(message.tool_call_id):
+				continue
+			if message.tool_call_id not in valid_tool_call_ids:
+				continue
+
+		sanitized.append(deepcopy(message))
+
+	return sanitized
+
+
+def sanitize_session_history_for_provider(session: Any, provider: str, max_runs: Optional[int] = None) -> int:
+	"""Sanea los runs recientes de una sesion cargada desde DB."""
+	if provider not in HISTORY_SANITIZE_PROVIDERS or session is None or not getattr(session, "runs", None):
+		return 0
+
+	runs = session.runs[-max_runs:] if max_runs else session.runs
+	removed_messages = 0
+
+	for run in runs:
+		run_messages = getattr(run, "messages", None) or []
+		sanitized_messages = sanitize_history_for_provider(run_messages, provider)
+		removed_messages += max(0, len(run_messages) - len(sanitized_messages))
+		run.messages = sanitized_messages
+
+	return removed_messages
+
+
+def sanitize_session_history_pre_hook(session: Any, agent: Agent, **_: Any) -> None:
+	"""Pre-hook Agno: limpia historial incompatible antes de construir messages."""
+	provider = detect_model_provider(agent.model)
+	removed = sanitize_session_history_for_provider(
+		session=session,
+		provider=provider,
+		max_runs=agent.num_history_runs,
+	)
+	if removed > 0:
+		logger.warning(
+			f"Historial de sesion sanitizado para provider '{provider}': "
+			f"{removed} mensaje(s) tool incompatibles removidos"
+		)
 
 
 # Proveedores que NO soportan audio nativo (necesitan transcripcion via Whisper/GPT-4o-mini)
@@ -626,6 +723,7 @@ def build_sub_agents(
 				tool_call_limit=config.get("tool_call_limit", 3),
 				add_datetime_to_context=config.get("add_datetime_to_context", True),
 				markdown=config.get("markdown", True),
+				pre_hooks=[sanitize_session_history_pre_hook],
 			)
 			agents.append(agent)
 			logger.info(f"Sub-agente cargado: {agent.name} ({agent.id})")
@@ -708,6 +806,7 @@ def build_teams(
 			instructions=team_def.get("instructions", []),
 			markdown=True,
 			enable_agentic_memory=team_def.get("enable_agentic_memory", False),
+			pre_hooks=[sanitize_session_history_pre_hook],
 		)
 		teams.append(team)
 		logger.info(
@@ -856,6 +955,7 @@ def load_workspace() -> dict[str, Any]:
 		num_history_runs=mem_config.get("num_history_runs", 5),
 		add_datetime_to_context=True,
 		markdown=True,
+		pre_hooks=[sanitize_session_history_pre_hook],
 	)
 
 	sub_agents = build_sub_agents(db, knowledge)

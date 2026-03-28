@@ -1,0 +1,81 @@
+{
+	"$schema": "https://mintlify.com/docs.json",
+	"theme": "mint",
+	"name": "OpenAgno",
+	"description": "Plataforma para construir y operar agentes sobre Agno con workspace declarativo, CLI empaquetada, canales, knowledge base y MCP.",
+	"colors": {
+		"primary": "#6366F1",
+		"light": "#818CF8",
+		"dark": "#4F46E5"
+	},
+	"logo": {
+		"light": "/logo/light.svg",
+		"dark": "/logo/dark.svg"
+	},
+	"favicon": "/favicon.svg",
+	"navbar": {
+		"links": [
+			{
+				"label": "Repositorio",
+				"href": "https://github.com/israelgo93/OpenAgno"
+			}
+		]
+	},
+	"navigation": {
+		"groups": [
+			{
+				"group": "Introduccion",
+				"pages": [
+					"index",
+					"quickstart",
+					"architecture"
+				]
+			},
+			{
+				"group": "Workspace",
+				"pages": [
+					"workspace/overview",
+					"workspace/config",
+					"workspace/templates",
+					"workspace/integrations",
+					"models",
+					"channels",
+					"tools",
+					"knowledge",
+					"mcp"
+				]
+			},
+			{
+				"group": "Operacion",
+				"pages": [
+					"cli",
+					"studio",
+					"api",
+					"security",
+					"troubleshooting"
+				]
+			},
+			{
+				"group": "Despliegue",
+				"pages": [
+					"deployment",
+					"structure"
+				]
+			},
+			{
+				"group": "Referencia",
+				"pages": [
+					"reference"
+				]
+			}
+		]
+	},
+	"search": {
+		"prompt": "Buscar comandos, workspace, canales, knowledge, MCP o despliegue"
+	},
+	"footer": {
+		"socials": {
+			"github": "https://github.com/israelgo93/OpenAgno"
+		}
+	}
+}

@@ -11,21 +11,29 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 import inspect
 import os
 import time
+import hmac
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from agno.os import AgentOS
+from agno.os.interfaces.whatsapp.security import validate_webhook_signature
 from agno.registry import Registry
 from agno.utils.log import logger
 
 from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS
 from management.validator import print_validation, validate_workspace, workspace_warnings
+from openagno.core.dedup import MessageDeduplicator
 
 validation_errors = validate_workspace()
 if validation_errors:
@@ -45,6 +53,10 @@ knowledge = ws["knowledge"]
 schedules = ws["schedules"]
 knowledge_doc_paths = ws["knowledge_doc_paths"]
 knowledge_urls = ws["knowledge_urls"]
+
+_wa_cloud_dedup = MessageDeduplicator(ttl=300, max_size=4096)
+_wa_qr_dedup = MessageDeduplicator(ttl=120, max_size=4096)
+limiter = Limiter(key_func=get_remote_address)
 
 if fallback_model:
 	_original_model = main_agent.model
@@ -359,10 +371,15 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 		from agno.media import Audio as AgnoAudio, Image as AgnoImage
 
 		from_jid = request.get("from", "")
+		message_id = request.get("message_id", "")
 		text = request.get("text", "")
 		msg_type = request.get("type", "text")
 		mime_type = request.get("mimeType", "")
 		media_b64 = request.get("media", "")
+
+		if message_id and _wa_qr_dedup.is_duplicate(message_id):
+			logger.info(f"QR Bridge duplicado ignorado: {message_id[:20]}")
+			return {"status": "duplicate_ignored"}
 
 		if not text and msg_type == "text":
 			return {"status": "ignored", "reason": "empty message"}
@@ -458,6 +475,8 @@ base_app = FastAPI(
 	version="1.0.0",
 	lifespan=lifespan,
 )
+base_app.state.limiter = limiter
+base_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 base_app.add_middleware(
 	CORSMiddleware,
 	allow_origins=["*"],
@@ -467,60 +486,116 @@ base_app.add_middleware(
 )
 
 # === Middleware: dedup WhatsApp webhooks por message ID ===
-# Meta re-entrega webhooks si el servidor estuvo caido durante un reinicio.
-# Agno no deduplica por message ID, asi que lo hacemos aqui.
+# Meta re-entrega webhooks si el servidor estuvo caido o demoro en responder.
+# No filtramos mensajes historicos validos; solo replays del mismo message_id.
 import json as _json
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-_wa_seen_msg_ids: dict[str, float] = {}
-_WA_DEDUP_TTL = 300.0  # 5 minutos
+async def _read_http_body(receive: Receive) -> bytes:
+	"""Lee el body completo de una request ASGI."""
+	chunks: list[bytes] = []
+	more_body = True
+	while more_body:
+		message = await receive()
+		if message["type"] != "http.request":
+			continue
+		chunks.append(message.get("body", b""))
+		more_body = message.get("more_body", False)
+	return b"".join(chunks)
 
-class WhatsAppDedupMiddleware(BaseHTTPMiddleware):
-	async def dispatch(self, request, call_next):
-		# Solo interceptar POST a rutas de webhook WhatsApp
-		if request.method == "POST" and "/webhook" in request.url.path and "whatsapp-qr" not in request.url.path:
-			body = await request.body()
-			try:
-				data = _json.loads(body)
-				if data.get("object") == "whatsapp_business_account":
-					now = time.time()
 
-					# Limpiar IDs expirados
-					expired = [k for k, ts in _wa_seen_msg_ids.items() if now - ts > _WA_DEDUP_TTL]
-					for k in expired:
-						del _wa_seen_msg_ids[k]
+def _sign_whatsapp_payload(payload: bytes) -> str | None:
+	"""Genera firma X-Hub-Signature-256 para un payload si existe app secret."""
+	app_secret = os.getenv("WHATSAPP_APP_SECRET")
+	if not app_secret:
+		return None
+	digest = hmac.new(app_secret.encode(), payload, hashlib.sha256).hexdigest()
+	return f"sha256={digest}"
 
-					# Extraer message IDs y filtrar duplicados
+
+class WhatsAppDedupMiddleware:
+	def __init__(self, app: ASGIApp):
+		self.app = app
+
+	async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+		if (
+			scope["type"] != "http"
+			or scope["method"] != "POST"
+			or "/webhook" not in scope["path"]
+			or "whatsapp-qr" in scope["path"]
+		):
+			await self.app(scope, receive, send)
+			return
+
+		body = await _read_http_body(receive)
+		try:
+			data = _json.loads(body)
+			if data.get("object") == "whatsapp_business_account":
+				headers = dict(scope.get("headers") or [])
+				signature = headers.get(b"x-hub-signature-256", b"").decode()
+				try:
+					signature_is_valid = validate_webhook_signature(body, signature)
+				except HTTPException:
+					signature_is_valid = False
+
+				# Nunca deduplicar antes de que el webhook pase validacion.
+				# Si la firma es invalida o la configuracion esta incompleta, delegar al router oficial.
+				if signature_is_valid:
 					all_duplicate = True
 					has_messages = False
+					body_modified = False
 					for entry in data.get("entry", []):
 						for change in entry.get("changes", []):
-							for msg in change.get("value", {}).get("messages", []):
-								has_messages = True
+							value = change.get("value", {})
+							messages = value.get("messages", [])
+							if not messages:
+								continue
+							has_messages = True
+							filtered_messages = []
+							for msg in messages:
 								msg_id = msg.get("id", "")
-								if msg_id and msg_id in _wa_seen_msg_ids:
-									logger.warning(f"Webhook duplicado ignorado: {msg_id[:20]}")
-								else:
-									all_duplicate = False
-									if msg_id:
-										_wa_seen_msg_ids[msg_id] = now
+								if msg_id and _wa_cloud_dedup.is_duplicate(msg_id):
+									logger.info(f"Webhook duplicado ignorado: {msg_id[:20]}")
+									body_modified = True
+									continue
+								all_duplicate = False
+								filtered_messages.append(msg)
 
-					# Si TODOS los mensajes del webhook ya fueron procesados, devolver 200 sin procesar
+							if len(filtered_messages) != len(messages):
+								value["messages"] = filtered_messages
+
 					if has_messages and all_duplicate:
-						return JSONResponse({"status": "duplicate_ignored"}, status_code=200)
+						response = JSONResponse({"status": "duplicate_ignored"}, status_code=200)
+						await response(scope, receive, send)
+						return
 
-			except (ValueError, KeyError):
-				pass  # No es JSON valido o estructura inesperada, dejar pasar
+					if body_modified:
+						body = _json.dumps(data).encode("utf-8")
+						new_signature = _sign_whatsapp_payload(body)
+						if new_signature:
+							scope = dict(scope)
+							headers = [
+								(key, value)
+								for key, value in scope.get("headers", [])
+								if key != b"x-hub-signature-256"
+							]
+							headers.append((b"x-hub-signature-256", new_signature.encode()))
+							scope["headers"] = headers
 
-			# Reconstituir el body para que FastAPI pueda leerlo
-			from starlette.requests import Request as StarletteRequest
-			scope = request.scope
-			async def receive():
-				return {"type": "http.request", "body": body}
-			request = StarletteRequest(scope, receive)
+		except (ValueError, KeyError):
+			pass  # No es JSON valido o estructura inesperada, dejar pasar
 
-		return await call_next(request)
+		sent = False
+
+		async def replay_receive() -> dict:
+			nonlocal sent
+			if sent:
+				return {"type": "http.request", "body": b"", "more_body": False}
+			sent = True
+			return {"type": "http.request", "body": body, "more_body": False}
+
+		await self.app(scope, replay_receive, send)
 
 base_app.add_middleware(WhatsAppDedupMiddleware)
 
@@ -533,7 +608,7 @@ async def root() -> RedirectResponse:
 
 if knowledge:
 	from routes.knowledge_routes import create_knowledge_router
-	knowledge_router = create_knowledge_router(knowledge)
+	knowledge_router = create_knowledge_router(knowledge, limiter=limiter)
 	base_app.include_router(knowledge_router)
 
 interfaces = []
@@ -691,7 +766,8 @@ OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.resolve())
 
 
 @base_app.post("/admin/reload")
-async def admin_reload():
+@limiter.limit("10/minute")
+async def admin_reload(request: Request):
 	"""El agente solicita reload. El daemon detecta la senal y reinicia."""
 	signal_file = OPENAGNO_ROOT / ".reload_requested"
 	signal_file.write_text(datetime.now().isoformat())
@@ -699,7 +775,8 @@ async def admin_reload():
 
 
 @base_app.get("/admin/health")
-async def admin_health():
+@limiter.limit("60/minute")
+async def admin_health(request: Request):
 	model_info = {**config.get("model", {})}
 	if fallback_model:
 		model_info["fallback_active"] = _using_fallback
@@ -724,7 +801,8 @@ async def admin_health():
 
 
 @base_app.post("/admin/fallback/activate")
-async def admin_fallback_activate():
+@limiter.limit("10/minute")
+async def admin_fallback_activate(request: Request):
 	"""Activa manualmente el modelo fallback."""
 	if not fallback_model:
 		return {"error": "No hay modelo fallback configurado"}
@@ -733,7 +811,8 @@ async def admin_fallback_activate():
 
 
 @base_app.post("/admin/fallback/restore")
-async def admin_fallback_restore():
+@limiter.limit("10/minute")
+async def admin_fallback_restore(request: Request):
 	"""Restaura el modelo principal."""
 	if not fallback_model:
 		return {"error": "No hay modelo fallback configurado"}
@@ -743,4 +822,4 @@ async def admin_fallback_restore():
 app = agent_os.get_app()
 
 if __name__ == "__main__":
-	agent_os.serve(app="gateway:app", host="0.0.0.0", port=PORT)
+	agent_os.serve(app="gateway:app", host="0.0.0.0", port=PORT, ws="wsproto")

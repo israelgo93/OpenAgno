@@ -1,0 +1,47 @@
+---
+title: Integraciones declarativas
+description: Como fusionar tools, MCP y variables de entorno desde workspace/integrations.
+---
+
+Las integraciones viven en `workspace/integrations/<id>/` y permiten activar configuracion adicional sin editar directamente `tools.yaml` o `mcp.yaml` en cada entorno.
+
+## Estructura
+
+```text
+workspace/integrations/mi_servicio/
+  integration.yaml
+  config.env
+  config.env.example
+```
+
+## Que hace el loader
+
+Al arrancar:
+
+1. Lee `integration.yaml` de cada carpeta.
+2. Carga `config.env` si la integracion esta habilitada.
+3. Fusiona tools opcionales declarados en la integracion con `tools.yaml`.
+4. Fusiona bloques MCP declarados en la integracion con `mcp.yaml`.
+
+## Campos utiles de integration.yaml
+
+| Campo | Uso |
+|-------|-----|
+| `id` | Identificador logico |
+| `enabled` | Activa o desactiva la integracion |
+| `env_file` / `env_files` | Archivos `.env` que se deben cargar |
+| `optional_tool` / `optional_tools` | Tools opcionales a habilitar |
+| `tool_config` | Config adicional que se fusiona en esa tool |
+| `mcp` / `mcp_servers` | Uno o varios servidores MCP |
+
+## Casos tipicos
+
+- Habilitar Tavily sin tocar el workspace principal.
+- Encender un servidor MCP stdio con credenciales propias.
+- Versionar una integracion en git y dejar secretos en `config.env`.
+
+## Recomendaciones
+
+- Mantén `integration.yaml` en git y `config.env` fuera de versionado.
+- Si una integracion habilita tools y MCP al mismo tiempo, pon ambos en la misma carpeta.
+- Reinicia el gateway despues de cambios en integraciones para asegurar recarga completa.

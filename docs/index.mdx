@@ -1,0 +1,45 @@
+---
+title: Introduccion
+description: Que es OpenAgno, que incluye hoy y por donde empezar sin perder contexto operativo.
+---
+
+OpenAgno es una plataforma sobre **Agno** para construir, ejecutar y operar agentes con un **workspace declarativo**. El proyecto combina una CLI empaquetada, un gateway FastAPI/AgentOS, canales como WhatsApp y Slack, una knowledge base con PgVector y soporte para servidores MCP.
+
+## Que incluye el proyecto
+
+- **CLI `openagno`** para inicializar workspaces, arrancar el runtime, validar configuracion, ver logs, agregar canales y crear sub-agentes.
+- **Workspace versionable** en YAML y Markdown para identidad, modelo, tools, MCP, knowledge, sub-agentes, teams e integraciones.
+- **Gateway AgentOS** con rutas custom de administracion y knowledge, mas las rutas nativas de AgentOS para agentes, sesiones, memorias y schedules.
+- **Canales simultaneos**: WhatsApp Cloud API, bridge QR, Slack, Telegram, Web/Studio, y soporte opcional para AI SDK y A2A.
+- **Protecciones operativas**: fallback de modelo, saneamiento de historial cross-model, deduplicacion de WhatsApp por `message_id`, validacion de firma webhook y rate limiting en endpoints operativos.
+- **Templates empaquetados** para partir de workspaces listos: `personal_assistant`, `customer_support`, `research_agent`, `sales_agent` y `developer_assistant`.
+
+## Flujo recomendado
+
+1. Instala el proyecto y la CLI empaquetada.
+2. Crea o copia un workspace desde un template.
+3. Valida la configuracion antes de arrancar.
+4. Levanta el gateway en foreground o con supervisor.
+5. Conecta canales, Studio o clientes AgentOS segun tu caso.
+
+<CardGroup cols={2}>
+	<Card title="Inicio rapido" icon="rocket" href="/quickstart">
+		Instalacion, templates, validacion y primer arranque.
+	</Card>
+	<Card title="Workspace" icon="folder" href="/workspace/overview">
+		Archivos, convenciones y limites practicos del workspace.
+	</Card>
+	<Card title="CLI" icon="terminal" href="/cli">
+		Comandos reales de `openagno` y compatibilidad con `management.cli`.
+	</Card>
+	<Card title="API" icon="server" href="/api">
+		Endpoints custom de OpenAgno y rutas nativas de AgentOS.
+	</Card>
+</CardGroup>
+
+## Donde conviene poner atencion
+
+- Si quieres la ruta mas estable, mantén el workspace en `./workspace` bajo `OPENAGNO_ROOT`.
+- Si vas a usar WhatsApp Cloud API, configura `WHATSAPP_APP_SECRET` para que la validacion de firma quede activa.
+- Si usas el supervisor (`service_manager.py` o `openagno start`), los logs quedan en `gateway.log`.
+- Si vas a operar knowledge o integraciones MCP, revisa primero `/knowledge` y `/mcp`.

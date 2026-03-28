@@ -1,0 +1,75 @@
+---
+title: CLI
+description: CLI empaquetada `openagno`, comandos soportados y lugar que ocupa `management.cli`.
+---
+
+La CLI principal del proyecto es:
+
+```bash
+openagno <comando>
+```
+
+## Comandos principales
+
+| Comando | Uso |
+|---------|-----|
+| `openagno init` | Onboarding interactivo legacy |
+| `openagno init --template <id>` | Copiar un workspace desde un template empaquetado |
+| `openagno start` | Arrancar supervisor en background |
+| `openagno start --foreground` | Ejecutar `gateway.py` en foreground |
+| `openagno stop` | Detener supervisor |
+| `openagno restart` | Reiniciar supervisor |
+| `openagno status` | Mostrar estado del runtime actual |
+| `openagno logs` | Leer `gateway.log` |
+| `openagno validate` | Validar `workspace/` |
+
+## Comandos de workspace
+
+| Comando | Uso |
+|---------|-----|
+| `openagno templates list` | Listar templates disponibles |
+| `openagno templates show <id>` | Ver metadata de un template |
+| `openagno create agent <name>` | Crear sub-agente en `workspace/agents/` |
+| `openagno add whatsapp --mode <modo>` | Agregar o ajustar canal WhatsApp |
+| `openagno add slack` | Agregar Slack al workspace |
+| `openagno add telegram` | Agregar Telegram al workspace |
+| `openagno add tool <tool>` | Activar o desactivar tools opcionales |
+| `openagno deploy local` | Alias para arranque supervisado local |
+| `openagno deploy docker` | `docker compose up -d` |
+| `openagno deploy aws` | Placeholder de guidance |
+
+## Ejemplos
+
+```bash
+openagno templates list
+openagno init --template customer_support
+openagno validate
+openagno start --foreground
+
+openagno add whatsapp --mode dual
+openagno add tool tavily
+openagno create agent "Billing Agent" --tool wikipedia --instruction "Ayuda con facturacion"
+```
+
+## Logs y procesos
+
+- `openagno logs` lee `gateway.log`.
+- `gateway.log` se genera cuando usas el supervisor (`openagno start` o `service_manager.py start`).
+- Si ejecutas `openagno start --foreground` o `python gateway.py`, los logs salen a stdout.
+
+## Compatibilidad con la CLI legacy
+
+`management.cli` sigue existiendo para:
+
+- onboarding historico,
+- `doctor`,
+- `chat`,
+- reconfiguracion interactiva.
+
+Si ya dependes de esos flujos, siguen siendo validos:
+
+```bash
+python -m management.cli
+python -m management.cli doctor
+python -m management.cli chat
+```

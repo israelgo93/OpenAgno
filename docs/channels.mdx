@@ -1,0 +1,102 @@
+---
+title: Canales
+description: Configuracion real de WhatsApp, Slack, Telegram, Web/Studio y canales opcionales del runtime.
+---
+
+## Matriz rapida
+
+| Canal | Activacion | Rutas / notas |
+|-------|------------|---------------|
+| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | `GET/POST /whatsapp/webhook`, validacion de firma |
+| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | `/whatsapp-qr/*`, requiere bridge Node |
+| WhatsApp dual | `channels: [whatsapp]` + `whatsapp.mode: dual` | Cloud API + QR en la misma instancia |
+| Slack | `channels: [slack]` | Router Agno Slack |
+| Telegram | `channels: [telegram]` | Router Agno Telegram |
+| Web / Studio | Siempre disponible | `os.agno.com` o rutas nativas AgentOS |
+| AI SDK | `channels: [ai_sdk]` | Opcional, depende de Agno instalado |
+| A2A | `a2a.enabled: true` | Opcional, depende de Agno instalado |
+
+## WhatsApp Cloud API (Meta)
+
+Canal oficial mediante Meta Business API. Requiere cuenta Business verificada.
+
+```bash
+WHATSAPP_ACCESS_TOKEN=tu_token
+WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
+WHATSAPP_VERIFY_TOKEN=tu_verify_token
+WHATSAPP_APP_SECRET=tu_app_secret
+```
+
+Configura el webhook de Meta apuntando a `https://tu-dominio/whatsapp/webhook`.
+
+### Comportamiento del webhook
+
+- `GET /whatsapp/webhook` se usa para la verificacion de Meta.
+- `POST /whatsapp/webhook` valida la firma contra `WHATSAPP_APP_SECRET`.
+- Solo despues de pasar esa validacion se ejecuta deduplicacion por `message_id`.
+- Si llega un payload con mensajes repetidos y nuevos, OpenAgno filtra los repetidos y procesa solo los nuevos.
+
+Para desarrollo local puedes desactivar la firma con:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+No uses esa variable en produccion.
+
+## WhatsApp QR (bridge Baileys)
+
+Vinculacion por QR como dispositivo secundario. No requiere cuenta Business.
+
+```yaml
+whatsapp:
+	mode: qr_link
+	qr_link:
+		bridge_url: http://localhost:3001
+```
+
+```bash
+cd bridges/whatsapp-qr
+npm install
+node index.js
+```
+
+Luego inicia el gateway y abre una de estas rutas:
+
+- `http://localhost:8000/whatsapp-qr/code`
+- `http://localhost:8000/whatsapp-qr/code/json`
+- `http://localhost:8000/whatsapp-qr/status`
+
+## Modo dual
+
+Puedes ejecutar Cloud API y QR en simultaneo con `whatsapp.mode: dual` en `config.yaml`.
+
+## Slack
+
+Bot de Slack. Scopes tipicos: `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`.
+
+```bash
+SLACK_TOKEN=xoxb-tu-token
+SLACK_SIGNING_SECRET=tu_signing_secret
+```
+
+## Telegram
+
+Crea el bot con BotFather y configura el token.
+
+```bash
+TELEGRAM_TOKEN=tu_token_de_botfather
+```
+
+## Web (Studio)
+
+Siempre disponible con el gateway. Conecta desde [os.agno.com](https://os.agno.com) &gt; Add OS &gt; Local &gt; `http://localhost:8000`.
+
+## AI SDK y A2A
+
+El runtime tambien puede registrar:
+
+- `ai_sdk` en `channels`
+- `a2a.enabled: true`
+
+Ambos dependen de que tu instalacion de Agno incluya esas interfaces.

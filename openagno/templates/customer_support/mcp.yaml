@@ -1,0 +1,8 @@
+servers:
+  - name: agno_docs
+    transport: streamable-http
+    url: https://docs.agno.com/mcp
+    enabled: true
+
+expose:
+  enabled: true
