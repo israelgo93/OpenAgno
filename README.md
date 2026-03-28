@@ -184,12 +184,6 @@ cd docs
 npm run broken-links
 ```
 
-## Auditoría del plan
-
-La validación contra `docs_plan/OpenAgno_Plan_Estrategico_Consolidado.md` y el plan de cierre quedaron documentados en:
-
-- `docs_plan/phase9_audit_and_completion_plan.md`
-
 ## Licencia
 
 Apache 2.0.

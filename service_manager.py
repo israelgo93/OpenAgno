@@ -1,12 +1,8 @@
 """
-OpenAgno Service Manager — Gateway como servicio en segundo plano.
-El agente puede solicitar reload sin matarse a si mismo.
+OpenAgno local supervisor helper.
 
-Uso:
-  python service_manager.py start
-  python service_manager.py stop
-  python service_manager.py restart
-  python service_manager.py status
+Este modulo se invoca desde `openagno start`, `openagno stop`,
+`openagno restart` y `openagno status` para manejar el gateway en background.
 """
 import os
 import sys
@@ -184,7 +180,7 @@ def _kill_existing() -> bool:
 
 def main() -> None:
 	if len(sys.argv) < 2:
-		print("Uso: python service_manager.py [start|stop|restart|status]")
+		print("Usa: openagno start | openagno stop | openagno restart | openagno status")
 		sys.exit(1)
 
 	cmd = sys.argv[1]

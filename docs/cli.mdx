@@ -9,7 +9,7 @@ La ruta de operación documentada para OpenAgno es:
 openagno <comando>
 ```
 
-`python -m management.cli` sigue existiendo como compatibilidad interna, pero está deprecado como punto de entrada para usuarios.
+El wizard heredado sigue existiendo solo como bridge interno de compatibilidad y no forma parte del flujo documentado para usuarios.
 
 ## Comandos principales
 
@@ -87,4 +87,4 @@ openagno start --foreground
 - `openagno deploy aws` todavía no provisiona infraestructura.
 - La CLI trabaja sobre `OPENAGNO_ROOT/workspace`.
 - Si usas supervisor, los logs quedan en `gateway.log`.
-- `openagno init` sin template sigue lanzando el wizard interactivo legacy como bridge interno.
+- `openagno init` sin template sigue lanzando el wizard interactivo de compatibilidad.

@@ -1,23 +1,12 @@
 """
-CLI de Onboarding v6 - Setup, diagnostico, reconfiguracion y chat interactivo.
+Legacy onboarding bridge mantenido solo por compatibilidad interna.
 
-Comandos:
-	python -m management.cli              # Setup wizard (genera workspace + .env)
-	python -m management.cli chat         # Chat interactivo con el agente
-	python -m management.cli doctor       # Diagnostica y repara problemas
-	python -m management.cli configure    # Reconfigura una seccion especifica
-	python -m management.cli fallback     # Configura modelo fallback
-	python -m management.cli audio        # Configura audio (STT/TTS)
-	python -m management.cli status       # Estado del sistema
+Flujo publico:
+	openagno init
+	openagno --help
 
-Genera:
-	workspace/config.yaml
-	workspace/instructions.md
-	workspace/tools.yaml
-	workspace/mcp.yaml
-	workspace/knowledge/urls.yaml
-	workspace/agents/teams.yaml
-	.env
+Este modulo sigue existiendo porque `openagno init` sin template reutiliza
+la implementacion historica del wizard interactivo.
 """
 import warnings
 warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version")
@@ -1775,7 +1764,7 @@ def main() -> None:
 				print(f"  │  {CYAN}{cmd:14s}{RESET} {desc:<39s}│")
 			print(f"  └{'─' * 56}┘")
 			print()
-			print(f"  {DIM}Uso: python -m management.cli [comando]{RESET}")
+			print(f"  {DIM}CLI publica: openagno --help{RESET}")
 			print()
 		case _:
 			print(f"  {_error(f'Comando desconocido: {command}')}")

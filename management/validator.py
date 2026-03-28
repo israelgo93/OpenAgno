@@ -1,9 +1,7 @@
 """
-Validator - Valida el workspace/ antes de arrancar el gateway.
+Workspace validator usado por `openagno validate` y por los chequeos previos al arranque.
 
-Uso:
-	python -m management.validator
-	# o desde codigo:
+Desde codigo:
 	from management.validator import validate_workspace
 	errors = validate_workspace()
 """
