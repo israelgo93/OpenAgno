@@ -31,7 +31,7 @@ def init_command(
 
 	header("Initializing OpenAgno...")
 	step_info("Launching the interactive setup wizard.")
-	step_info("This path still uses the legacy onboarding flow internally.")
+	step_info("This path still uses the compatibility onboarding flow internally.")
 	cwd = Path.cwd()
 	try:
 		os.chdir(root)
