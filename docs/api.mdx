@@ -1,38 +1,36 @@
 ---
-title: HTTP API / API HTTP
+title: HTTP API
 description: OpenAgno runtime endpoints, including tenant provisioning, knowledge operations, admin routes, and AgentOS-native routes.
 ---
 
 Typical base URL: `http://localhost:8000` (adjust host and port in deployment).
 
-## English
+## OpenAgno custom routes
 
-### OpenAgno custom routes
-
-| Metodo | Ruta | Descripcion |
+| Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/admin/health` | Estado del runtime, agentes, canales, modelo y scheduler |
-| `POST` | `/admin/reload` | Solicitar reload al supervisor |
-| `POST` | `/admin/fallback/activate` | Activar fallback manualmente |
-| `POST` | `/admin/fallback/restore` | Restaurar modelo principal |
+| `GET` | `/admin/health` | Runtime health, channels, agents, model, and scheduler state |
+| `POST` | `/admin/reload` | Ask the supervisor to reload the runtime |
+| `POST` | `/admin/fallback/activate` | Enable the fallback model manually |
+| `POST` | `/admin/fallback/restore` | Restore the primary model |
 
 These routes are rate-limited. If you expose them in production, protect them behind private networking or a reverse proxy.
 
-### Knowledge routes
+## Knowledge routes
 
-| Metodo | Ruta | Descripcion |
+| Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/knowledge/upload` | Subir documento |
-| `POST` | `/knowledge/ingest-urls` | Ingestar URLs |
-| `GET` | `/knowledge/list` | Listar documentos |
-| `DELETE` | `/knowledge/{doc_name}` | Eliminar documento |
-| `POST` | `/knowledge/search` | Busqueda semantica |
+| `POST` | `/knowledge/upload` | Upload a document |
+| `POST` | `/knowledge/ingest-urls` | Ingest URLs |
+| `GET` | `/knowledge/list` | List indexed documents |
+| `DELETE` | `/knowledge/{doc_name}` | Delete a document |
+| `POST` | `/knowledge/search` | Run semantic search |
 
 If you send `X-Tenant-ID`, these routes become tenant-aware and use Agno-native knowledge isolation.
 
 If you define `OPENAGNO_API_KEY`, these routes require the `X-API-Key` header.
 
-### Tenant provisioning routes
+## Tenant provisioning routes
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -45,43 +43,43 @@ If you define `OPENAGNO_API_KEY`, these routes require the `X-API-Key` header.
 | `PUT` | `/tenants/{tenant_id}/workspace` | Update the tenant workspace config |
 | `POST` | `/tenants/{tenant_id}/agents/{agent_id}/runs` | Run an agent with tenant-scoped `knowledge_filters` |
 
-### WhatsApp QR
+## WhatsApp QR
 
-| Metodo | Ruta | Descripcion |
+| Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/whatsapp-qr/status` | Estado del bridge QR |
-| `GET` | `/whatsapp-qr/code` | Pagina HTML con QR |
-| `GET` | `/whatsapp-qr/code/json` | QR como JSON |
-| `POST` | `/whatsapp-qr/incoming` | Mensajes entrantes del bridge QR |
+| `GET` | `/whatsapp-qr/status` | QR bridge status |
+| `GET` | `/whatsapp-qr/code` | HTML page with the QR |
+| `GET` | `/whatsapp-qr/code/json` | QR payload as JSON |
+| `POST` | `/whatsapp-qr/incoming` | Incoming bridge messages |
 
-### WhatsApp Cloud API
+## WhatsApp Cloud API
 
-| Metodo | Ruta | Descripcion |
+| Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta |
-| `POST` | `/whatsapp/webhook` | Recepcion de eventos de WhatsApp Cloud API |
+| `GET` | `/whatsapp/webhook` | Meta webhook verification |
+| `POST` | `/whatsapp/webhook` | WhatsApp Cloud API events |
 
-### AgentOS-native routes
+## AgentOS-native routes
 
 The runtime also exposes native AgentOS routes. The most relevant operational groups are:
 
-| Grupo | Rutas principales |
-|-------|-------------------|
-| Agentes | `/agents`, `/agents/{agent_id}/runs` |
+| Group | Main routes |
+|-------|-------------|
+| Agents | `/agents`, `/agents/{agent_id}/runs` |
 | Teams | `/teams`, `/teams/{team_id}/runs` |
-| Sesiones | `/sessions`, `/sessions/{session_id}`, `/sessions/{session_id}/runs` |
-| Memorias | `/memories`, `/memory_topics`, `/optimize-memories` |
+| Sessions | `/sessions`, `/sessions/{session_id}`, `/sessions/{session_id}/runs` |
+| Memories | `/memories`, `/memory_topics`, `/optimize-memories` |
 | Schedules | `/schedules`, `/schedules/{schedule_id}`, `/schedules/{schedule_id}/trigger` |
 | Registry / config | `/registry`, `/config`, `/components`, `/models` |
-| Observabilidad | `/health`, `/metrics`, `/traces`, `/eval-runs` |
+| Observability | `/health`, `/metrics`, `/traces`, `/eval-runs` |
 
-### Generated documentation
+## Generated documentation
 
 - `/docs`
 - `/redoc`
 - `/openapi.json`
 
-### Example
+## Example
 
 Health check:
 
@@ -89,7 +87,7 @@ Health check:
 curl http://127.0.0.1:8000/admin/health
 ```
 
-Busqueda custom de knowledge:
+Custom knowledge search:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/knowledge/search \
@@ -105,9 +103,3 @@ curl -X POST http://127.0.0.1:8000/tenants/acme/agents/agnobot-main/runs \
   -H 'X-API-Key: change-me' \
   -d '{"message":"Summarize my tenant docs","user_id":"demo"}'
 ```
-
-## Español
-
-El runtime también expone rutas custom y rutas nativas de AgentOS. La principal novedad de esta fase es la capa `/tenants/*`, que aprovisiona workspaces por tenant y ejecuta agentes con `knowledge_filters` tenant-aware sobre Agno.
-
-Para seguridad, rate limit y firma de WhatsApp, revisa [Seguridad](/security).

@@ -1,0 +1,99 @@
+---
+title: API HTTP
+description: Endpoints del runtime OpenAgno, incluyendo provisioning multi-tenant, knowledge, admin y rutas nativas de AgentOS.
+---
+
+Base URL tipica: `http://localhost:8000` (ajusta host y puerto segun tu despliegue).
+
+## Rutas custom de OpenAgno
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/admin/health` | Estado del runtime, canales, agentes, modelo y scheduler |
+| `POST` | `/admin/reload` | Solicita al supervisor recargar el runtime |
+| `POST` | `/admin/fallback/activate` | Activa manualmente el modelo de fallback |
+| `POST` | `/admin/fallback/restore` | Restaura el modelo principal |
+
+Estas rutas tienen rate limit. Si las expones en produccion, dejalas detras de red privada o de un reverse proxy.
+
+## Rutas de knowledge
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `POST` | `/knowledge/upload` | Sube un documento |
+| `POST` | `/knowledge/ingest-urls` | Ingiere URLs |
+| `GET` | `/knowledge/list` | Lista documentos indexados |
+| `DELETE` | `/knowledge/{doc_name}` | Elimina un documento |
+| `POST` | `/knowledge/search` | Ejecuta busqueda semantica |
+
+Si envias `X-Tenant-ID`, estas rutas pasan a ser tenant-aware y usan aislamiento nativo de Agno.
+
+Si defines `OPENAGNO_API_KEY`, estas rutas exigen el header `X-API-Key`.
+
+## Rutas de provisioning multi-tenant
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/tenants` | Lista tenants |
+| `POST` | `/tenants` | Crea un tenant y provisiona su workspace |
+| `GET` | `/tenants/{tenant_id}` | Lee metadata del tenant |
+| `PATCH` | `/tenants/{tenant_id}` | Actualiza plan, limites, slug o config del workspace |
+| `DELETE` | `/tenants/{tenant_id}` | Desactiva el tenant |
+| `GET` | `/tenants/{tenant_id}/workspace` | Lee la configuracion del workspace |
+| `PUT` | `/tenants/{tenant_id}/workspace` | Actualiza la configuracion del workspace |
+| `POST` | `/tenants/{tenant_id}/agents/{agent_id}/runs` | Ejecuta un agente con `knowledge_filters` tenant-aware |
+
+## WhatsApp QR
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/whatsapp-qr/status` | Estado del bridge QR |
+| `GET` | `/whatsapp-qr/code` | Pagina HTML con el QR |
+| `GET` | `/whatsapp-qr/code/json` | QR como JSON |
+| `POST` | `/whatsapp-qr/incoming` | Mensajes entrantes del bridge QR |
+
+## WhatsApp Cloud API
+
+| Metodo | Ruta | Descripcion |
+|--------|------|-------------|
+| `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta |
+| `POST` | `/whatsapp/webhook` | Eventos de WhatsApp Cloud API |
+
+## Rutas nativas de AgentOS
+
+El runtime tambien expone rutas nativas de AgentOS. Los grupos operativos mas importantes son:
+
+| Grupo | Rutas principales |
+|-------|-------------------|
+| Agentes | `/agents`, `/agents/{agent_id}/runs` |
+| Teams | `/teams`, `/teams/{team_id}/runs` |
+| Sesiones | `/sessions`, `/sessions/{session_id}`, `/sessions/{session_id}/runs` |
+| Memorias | `/memories`, `/memory_topics`, `/optimize-memories` |
+| Schedules | `/schedules`, `/schedules/{schedule_id}`, `/schedules/{schedule_id}/trigger` |
+| Registry / config | `/registry`, `/config`, `/components`, `/models` |
+| Observabilidad | `/health`, `/metrics`, `/traces`, `/eval-runs` |
+
+## Ejemplo
+
+Chequeo de salud:
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+Busqueda custom sobre knowledge:
+
+```bash
+curl -X POST http://127.0.0.1:8000/knowledge/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"OpenAgno","max_results":3}'
+```
+
+Ejecucion tenant-aware:
+
+```bash
+curl -X POST http://127.0.0.1:8000/tenants/acme/agents/agnobot-main/runs \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: change-me' \
+  -d '{"message":"Resume mis documentos","user_id":"demo"}'
+```

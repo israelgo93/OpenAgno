@@ -109,7 +109,7 @@ multitasking==0.0.12
 networkx==3.6.1
 nltk==3.9.4
 numpy==2.4.3
--e git+https://github.com/israelgo93/OpenAgno.git@8778c82ebe73bdc744071d9557d9149ddd09ebf7#egg=openagno
+-e git+https://github.com/OpenAgno/OpenAgno.git@8778c82ebe73bdc744071d9557d9149ddd09ebf7#egg=openagno
 openai==2.30.0
 openapi-pydantic==0.5.1
 openinference-instrumentation==0.1.46

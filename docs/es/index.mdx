@@ -1,0 +1,55 @@
+---
+title: Resumen
+description: Que es OpenAgno hoy, que resuelve y por donde empezar si eres tecnico o no tecnico.
+---
+
+OpenAgno es una plataforma sobre **Agno** para construir y operar agentes mediante un **workspace declarativo**. Combina una CLI empaquetada, un runtime AgentOS/FastAPI, templates reutilizables, canales, knowledge con PgVector y soporte MCP.
+
+## Lo que existe hoy
+
+- CLI `openagno`
+- workspace declarativo en YAML y Markdown
+- runtime AgentOS con rutas operativas y knowledge
+- templates empaquetados
+- canales para WhatsApp, Slack y Telegram
+- soporte opcional para AG-UI y A2A
+- PgVector sobre PostgreSQL o Supabase
+- documentacion Mintlify y tests automatizados
+
+## Lo que agrega la fase 10
+
+- rutas de aprovisionamiento multi-tenant
+- aislamiento tenant-aware sobre knowledge usando filtros nativos de Agno
+- exportaciones MCP para IDEs
+- seccion en espanol separada en `docs/es`
+
+## Flujo recomendado
+
+1. Instala el proyecto.
+2. Crea un workspace desde un template.
+3. Valida la configuracion.
+4. Arranca el runtime con `openagno`.
+5. Conecta canales, IDEs o clientes externos.
+
+La documentacion publica tambien expone un endpoint MCP en `https://docs.openagno.com/mcp` y archivos AI-friendly en `https://docs.openagno.com/llms.txt`.
+
+<CardGroup cols={2}>
+	<Card title="Inicio rapido" icon="rocket" href="/es/quickstart">
+		Instalacion, primer workspace y arranque del runtime.
+	</Card>
+	<Card title="Sin tocar codigo" icon="sparkles" href="/es/getting-started-no-code">
+		Configuracion guiada para levantar OpenAgno localmente.
+	</Card>
+	<Card title="Canales" icon="message-circle" href="/es/channels">
+		Canales compatibles y requisitos operativos.
+	</Card>
+	<Card title="API HTTP" icon="square-terminal" href="/es/api">
+		Rutas principales del runtime y provisioning.
+	</Card>
+	<Card title="MCP" icon="plug-zap" href="/es/mcp">
+		Como consumir y exponer MCP en OpenAgno.
+	</Card>
+	<Card title="Integracion con IDEs" icon="monitor-smartphone" href="/es/ide-integration">
+		Conexion de docs y runtime con herramientas AI.
+	</Card>
+</CardGroup>

@@ -1,7 +1,7 @@
 [Unit]
 Description=OpenAgno AI Agent Platform
 After=network.target
-Documentation=https://github.com/israelgo93/OpenAgno
+Documentation=https://github.com/OpenAgno/OpenAgno
 
 [Service]
 Type=simple

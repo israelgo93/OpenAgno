@@ -1,0 +1,85 @@
+---
+title: Canales
+description: Canales compatibles en el runtime, requisitos y guia de tuneles para desarrollo local.
+---
+
+OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actual: WhatsApp, Slack, Telegram, AG-UI y A2A. El canal `ai_sdk` no forma parte de la ruta compatible vigente y no debe usarse en nuevas configuraciones.
+
+## Matriz rapida
+
+| Canal o protocolo | Activacion | Requisitos |
+|-------------------|------------|------------|
+| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | credenciales de Meta |
+| WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | bridge Node opcional |
+| Slack | `channels: [slack]` | `SLACK_TOKEN`, `SLACK_SIGNING_SECRET` |
+| Telegram | `channels: [telegram]` | `TELEGRAM_TOKEN` |
+| AG-UI | `channels: [agui]` | extra `.[protocols]` |
+| A2A | `a2a.enabled: true` | extra `.[protocols]` |
+
+## WhatsApp Cloud API
+
+```bash
+WHATSAPP_ACCESS_TOKEN=tu_token
+WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
+WHATSAPP_VERIFY_TOKEN=tu_verify_token
+WHATSAPP_APP_SECRET=tu_app_secret
+```
+
+Rutas relevantes:
+
+- `GET /whatsapp/webhook`
+- `POST /whatsapp/webhook`
+
+## Desarrollo local sin dominio
+
+Durante desarrollo local normalmente necesitas un tunel publico para webhooks de WhatsApp, Slack o Telegram. En OpenAgno, la ruta practica esta documentada en [/es/whatsapp-tunnel](/es/whatsapp-tunnel).
+
+Para pruebas controladas sin firma real:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+Usalo solo en desarrollo.
+
+## WhatsApp QR
+
+```yaml
+whatsapp:
+  mode: qr_link
+  qr_link:
+    bridge_url: http://localhost:3001
+```
+
+```bash
+cd bridges/whatsapp-qr
+npm install
+node index.js
+```
+
+## Slack
+
+```bash
+SLACK_TOKEN=xoxb-tu-token
+SLACK_SIGNING_SECRET=tu_signing_secret
+```
+
+## Telegram
+
+```bash
+TELEGRAM_TOKEN=tu_token_de_botfather
+```
+
+## AG-UI y A2A
+
+```bash
+pip install -e '.[protocols]'
+openagno add agui
+openagno add a2a
+```
+
+Notas de compatibilidad:
+
+- `slack` y `telegram` forman parte de la instalacion base.
+- `agui` y `a2a` requieren extras de protocolos.
+- `ai_sdk` no forma parte del runtime compatible actual de OpenAgno.

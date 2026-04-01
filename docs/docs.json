@@ -2,7 +2,7 @@
 	"$schema": "https://mintlify.com/docs.json",
 	"theme": "mint",
 	"name": "OpenAgno",
-	"description": "Build and operate Agno-based agents with a declarative workspace, packaged CLI, multi-channel runtime, knowledge base, and MCP. Documentacion disponible en ingles y espanol.",
+	"description": "Build and operate Agno-based agents with a declarative workspace, packaged CLI, multi-channel runtime, knowledge base, and MCP.",
 	"colors": {
 		"primary": "#6366F1",
 		"light": "#818CF8",
@@ -16,72 +16,109 @@
 	"navbar": {
 		"links": [
 			{
-				"label": "Repositorio",
-				"href": "https://github.com/israelgo93/OpenAgno"
+				"label": "GitHub",
+				"href": "https://github.com/OpenAgno/OpenAgno"
 			}
 		]
 	},
 	"navigation": {
-		"groups": [
+		"languages": [
 			{
-				"group": "Getting started",
-				"pages": [
-					"index",
-					"quickstart",
-					"architecture"
+				"language": "en",
+				"default": true,
+				"groups": [
+					{
+						"group": "Getting started",
+						"pages": [
+							"index",
+							"quickstart",
+							"getting-started-no-code",
+							"architecture"
+						]
+					},
+					{
+						"group": "Workspace",
+						"pages": [
+							"workspace/overview",
+							"workspace/config",
+							"workspace/templates",
+							"workspace/integrations",
+							"models",
+							"channels",
+							"tools",
+							"knowledge",
+							"mcp"
+						]
+					},
+					{
+						"group": "Operations",
+						"pages": [
+							"cli",
+							"studio",
+							"api",
+							"security",
+							"troubleshooting"
+						]
+					},
+					{
+						"group": "Deployment",
+						"pages": [
+							"deployment",
+							"structure"
+						]
+					},
+					{
+						"group": "Integrations",
+						"pages": [
+							"ide-integration",
+							"whatsapp-tunnel"
+						]
+					},
+					{
+						"group": "Reference",
+						"pages": [
+							"reference",
+							"changelog"
+						]
+					}
 				]
 			},
 			{
-				"group": "Workspace",
-				"pages": [
-					"workspace/overview",
-					"workspace/config",
-					"workspace/templates",
-					"workspace/integrations",
-					"models",
-					"channels",
-					"tools",
-					"knowledge",
-					"mcp"
-				]
-			},
-			{
-				"group": "Operations",
-				"pages": [
-					"cli",
-					"studio",
-					"api",
-					"security",
-					"troubleshooting"
-				]
-			},
-			{
-				"group": "Deployment",
-				"pages": [
-					"deployment",
-					"structure"
-				]
-			},
-			{
-				"group": "Integrations",
-				"pages": [
-					"ide-integration"
-				]
-			},
-			{
-				"group": "Reference",
-				"pages": [
-					"reference"
+				"language": "es",
+				"groups": [
+					{
+						"group": "Comenzando",
+						"pages": [
+							"es/index",
+							"es/quickstart",
+							"es/getting-started-no-code"
+						]
+					},
+					{
+						"group": "Runtime y workspace",
+						"pages": [
+							"es/channels",
+							"es/mcp",
+							"es/api",
+							"es/whatsapp-tunnel"
+						]
+					},
+					{
+						"group": "Integraciones",
+						"pages": [
+							"es/ide-integration"
+						]
+					}
 				]
 			}
 		]
 	},
 	"search": {
-		"prompt": "Search commands, workspace, channels, knowledge, MCP, tenants, or deployment. Tambien puedes buscar en espanol."
+		"prompt": "Search commands, workspace, channels, knowledge, MCP, tenants, or deployment."
 	},
 	"footer": {
 		"socials": {
-			"github": "https://github.com/israelgo93/OpenAgno"
+			"github": "https://github.com/OpenAgno/OpenAgno"
 		}
 	}
 }

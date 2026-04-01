@@ -1,5 +1,5 @@
 ---
-title: MCP / MCP e IDEs
+title: MCP
 description: Configure MCP in OpenAgno and connect the public docs to AI IDEs and assistants.
 ---
 
@@ -8,9 +8,7 @@ OpenAgno can use MCP in two layers:
 1. **As a client**, by connecting to external servers declared in `workspace/mcp.yaml`.
 2. **As a server**, by exposing the embedded runtime MCP endpoint when `agentos.enable_mcp_server` is enabled.
 
-## English
-
-### MCP client
+## MCP client
 
 Example:
 
@@ -34,7 +32,7 @@ expose:
   enabled: true
 ```
 
-### What the loader supports
+## What the loader supports
 
 - `streamable-http`
 - `sse`
@@ -43,7 +41,7 @@ expose:
 - per-server `env` for `stdio`
 - declarative integration merging
 
-### Embedded MCP server
+## Embedded MCP server
 
 When `agentos.enable_mcp_server` is enabled, AgentOS exposes its own MCP server next to the runtime routes.
 
@@ -53,7 +51,7 @@ That lets you:
 - use Studio with the local OS
 - expose runtime tools and context in a controlled way
 
-### OpenAgno Docs as an MCP server
+## OpenAgno Docs as an MCP server
 
 The public docs are already available as a remote MCP server at:
 
@@ -67,32 +65,21 @@ It also exposes AI-friendly indexes at:
 https://docs.openagno.com/llms.txt
 ```
 
-### Connect from Claude Code
+## Connect from Claude Code
 
 ```bash
 claude mcp add openagno https://docs.openagno.com/mcp
 ```
 
-### Connect from Cursor or VS Code
+## Connect from Cursor or VS Code
 
 ```bash
 npx mint-mcp add openagno https://docs.openagno.com/mcp
 ```
 
-### Recommendations
+## Recommendations
 
 - Use `streamable-http` for remote servers when official support exists.
 - Use `stdio` for local servers that depend on `npx` or local binaries.
 - If an integration needs its own credentials, declare the MCP server under `workspace/integrations/<id>/integration.yaml`.
 - For IDE-specific setup, also review [/ide-integration](/ide-integration).
-
-## Español
-
-OpenAgno puede usar MCP como cliente y como servidor. Como cliente, consume servidores externos declarados en `workspace/mcp.yaml`. Como servidor, expone el MCP embebido del runtime cuando `agentos.enable_mcp_server` está activo.
-
-### Recomendaciones en español
-
-- Usa `streamable-http` para servidores remotos.
-- Usa `stdio` para servidores locales.
-- Declara credenciales con `${VAR}` desde `.env`.
-- Si vas a conectar IDEs, revisa también [/ide-integration](/ide-integration).

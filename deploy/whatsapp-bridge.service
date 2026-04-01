@@ -1,7 +1,7 @@
 [Unit]
 Description=OpenAgno WhatsApp QR Bridge (Baileys)
 After=network.target openagno.service
-Documentation=https://github.com/israelgo93/OpenAgno
+Documentation=https://github.com/OpenAgno/OpenAgno
 PartOf=openagno.service
 
 [Service]

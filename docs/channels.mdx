@@ -1,13 +1,11 @@
 ---
-title: Channels / Canales
+title: Channels
 description: Supported runtime channels, requirements, and local tunnel guidance for developers and operators.
 ---
 
 OpenAgno follows the interface surface currently exposed by Agno: WhatsApp, Slack, Telegram, AG-UI, and A2A. The `ai_sdk` channel is not part of the supported runtime path and should not be used in new configurations.
 
-## English
-
-### Quick matrix
+## Quick matrix
 
 | Channel or protocol | Activation | Requirements |
 |---------------------|------------|--------------|
@@ -18,7 +16,7 @@ OpenAgno follows the interface surface currently exposed by Agno: WhatsApp, Slac
 | AG-UI | `channels: [agui]` | extra `.[protocols]` |
 | A2A | `a2a.enabled: true` | extra `.[protocols]` |
 
-### WhatsApp Cloud API
+## WhatsApp Cloud API
 
 ```bash
 WHATSAPP_ACCESS_TOKEN=your_token
@@ -32,7 +30,7 @@ Relevant routes:
 - `GET /whatsapp/webhook`
 - `POST /whatsapp/webhook`
 
-### Local development without a domain
+## Local development without a domain
 
 During local development you usually need a public tunnel for WhatsApp, Slack, or Telegram webhooks. In OpenAgno, the practical setup is documented in [/whatsapp-tunnel](/whatsapp-tunnel).
 
@@ -44,7 +42,7 @@ WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
 
 Use that only in development.
 
-### WhatsApp QR
+## WhatsApp QR
 
 ```yaml
 whatsapp:
@@ -59,20 +57,20 @@ npm install
 node index.js
 ```
 
-### Slack
+## Slack
 
 ```bash
 SLACK_TOKEN=xoxb-your-token
 SLACK_SIGNING_SECRET=your_signing_secret
 ```
 
-### Telegram
+## Telegram
 
 ```bash
 TELEGRAM_TOKEN=your_botfather_token
 ```
 
-### AG-UI and A2A
+## AG-UI and A2A
 
 ```bash
 pip install -e '.[protocols]'
@@ -80,12 +78,8 @@ openagno add agui
 openagno add a2a
 ```
 
-## Español
+Compatibility notes:
 
-OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actual: WhatsApp, Slack, Telegram, AG-UI y A2A. El canal `ai_sdk` no forma parte de la ruta compatible vigente y no debe usarse en nuevas configuraciones.
-
-### Compatibilidad
-
-- `slack` y `telegram` forman parte de las dependencias base.
-- `agui` y `a2a` requieren instalar extras.
-- `ai_sdk` no forma parte del runtime compatible actual de OpenAgno.
+- `slack` and `telegram` are part of the base installation.
+- `agui` and `a2a` require protocol extras.
+- `ai_sdk` is not part of the supported OpenAgno runtime path.

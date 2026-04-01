@@ -1,19 +1,17 @@
 ---
-title: IDE integration / Integración con IDEs
+title: IDE integration
 description: Connect OpenAgno Docs to Claude Code, Cursor, VS Code, and Windsurf with MCP and llms.txt.
 ---
 
 OpenAgno publishes its documentation as a remote MCP server and as `llms.txt`, so both developers and non-developers can plug the docs into AI tools without scraping the site manually.
 
-## English
-
-### Public endpoints
+## Public endpoints
 
 - MCP server: `https://docs.openagno.com/mcp`
 - `llms.txt`: `https://docs.openagno.com/llms.txt`
 - `llms-full.txt`: `https://docs.openagno.com/llms-full.txt`
 
-### For developers
+## For developers
 
 Use the ready-to-copy templates from the repository:
 
@@ -30,7 +28,7 @@ Recommended setup by tool:
 - VS Code: copy `ide-configs/vscode-mcp.json` to `.vscode/mcp.json`
 - Windsurf: merge `ide-configs/windsurf-mcp.json` into `~/.codeium/windsurf/mcp_config.json`
 
-### For operators and non-developers
+## For operators and non-developers
 
 If your tool has an MCP UI, add a remote server and paste:
 
@@ -40,45 +38,6 @@ https://docs.openagno.com/mcp
 
 If your tool only supports URL-based knowledge ingestion, use `llms.txt` or `llms-full.txt`.
 
-### Local runtime option
+## Local runtime option
 
 If you run OpenAgno locally and keep `agentos.enable_mcp_server: true`, your runtime also exposes a local MCP server. That is useful when you want your IDE to query your own agents, tools, and workspace state instead of the public docs only.
-
-## Español
-
-### Endpoints públicos
-
-- Servidor MCP: `https://docs.openagno.com/mcp`
-- `llms.txt`: `https://docs.openagno.com/llms.txt`
-- `llms-full.txt`: `https://docs.openagno.com/llms-full.txt`
-
-### Para desarrolladores
-
-En el repositorio ya quedan plantillas listas para copiar:
-
-- `ide-configs/cursor-mcp.json`
-- `ide-configs/vscode-mcp.json`
-- `ide-configs/windsurf-mcp.json`
-- `ide-configs/claude-code-setup.sh`
-- `.agents/skills/openagno/SKILL.md`
-
-Ruta recomendada por herramienta:
-
-- Claude Code: ejecutar `bash ide-configs/claude-code-setup.sh`
-- Cursor: copiar `ide-configs/cursor-mcp.json` a `.cursor/mcp.json`
-- VS Code: copiar `ide-configs/vscode-mcp.json` a `.vscode/mcp.json`
-- Windsurf: integrar `ide-configs/windsurf-mcp.json` en `~/.codeium/windsurf/mcp_config.json`
-
-### Para usuarios no técnicos
-
-Si tu herramienta tiene interfaz para MCP, agrega un servidor remoto y pega:
-
-```text
-https://docs.openagno.com/mcp
-```
-
-Si tu herramienta solo puede ingerir URLs, usa `llms.txt` o `llms-full.txt`.
-
-### Opción local
-
-Si ejecutas OpenAgno localmente y mantienes `agentos.enable_mcp_server: true`, el runtime también expone su propio MCP. Eso sirve cuando quieres que tu IDE consulte tus agentes, tus tools y tu workspace, no solo la documentación pública.

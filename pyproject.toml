@@ -58,6 +58,12 @@ protocols = [
 [project.scripts]
 openagno = "openagno.cli:main"
 
+[project.urls]
+Homepage = "https://openagno.com"
+Repository = "https://github.com/OpenAgno/OpenAgno"
+Documentation = "https://docs.openagno.com"
+Issues = "https://github.com/OpenAgno/OpenAgno/issues"
+
 [tool.setuptools]
 include-package-data = true
 py-modules = ["gateway", "loader", "security", "service_manager"]

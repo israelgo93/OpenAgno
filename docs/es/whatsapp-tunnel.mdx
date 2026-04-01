@@ -1,0 +1,39 @@
+---
+title: Tunel para WhatsApp
+description: Expone tu runtime local de OpenAgno a los webhooks de Meta durante desarrollo con ngrok o Cloudflare Tunnel.
+---
+
+Cuando desarrollas localmente con WhatsApp Cloud API, Meta necesita una URL publica HTTPS para validar el webhook y enviar eventos entrantes. Esta pagina resume la configuracion mas rapida.
+
+## Opcion 1. ngrok
+
+```bash
+ngrok http 8000
+```
+
+Usa la URL HTTPS generada como base del webhook.
+
+## Opcion 2. Cloudflare Tunnel
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+Usa la URL publica generada como base del webhook.
+
+## Configuracion en Meta
+
+En Meta Developer Console usa:
+
+- Callback URL: `https://tu-url-publica/whatsapp/webhook`
+- Verify token: el mismo valor que guardas en `WHATSAPP_VERIFY_TOKEN`
+
+## Atajo solo para desarrollo
+
+Si necesitas pruebas locales controladas sin firma real:
+
+```bash
+WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
+```
+
+Usalo solo en desarrollo.

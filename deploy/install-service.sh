@@ -38,7 +38,7 @@ cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=OpenAgno AI Agent Platform
 After=network.target
-Documentation=https://github.com/israelgo93/OpenAgno
+Documentation=https://github.com/OpenAgno/OpenAgno
 
 [Service]
 Type=simple
@@ -73,7 +73,7 @@ if [ -f "$BRIDGE_DIR/index.js" ] && command -v node &>/dev/null; then
 [Unit]
 Description=OpenAgno WhatsApp QR Bridge (Baileys)
 After=network.target ${SERVICE_NAME}.service
-Documentation=https://github.com/israelgo93/OpenAgno
+Documentation=https://github.com/OpenAgno/OpenAgno
 PartOf=${SERVICE_NAME}.service
 
 [Service]

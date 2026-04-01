@@ -1,0 +1,92 @@
+---
+title: Inicio rapido
+description: Instala OpenAgno, crea un workspace y arranca el runtime. Incluye la ruta desde PyPI y desde el repositorio.
+---
+
+OpenAgno ya esta preparado para publicarse como paquete Python, pero la ruta mas segura sigue siendo instalar desde codigo fuente hasta que `openagno` aparezca en el indice o mirror que uses. Si `pip install openagno` ya resuelve en tu entorno, puedes usarlo.
+
+## Requisitos
+
+- Python 3.10 o superior. Python 3.11+ recomendado.
+- PostgreSQL con `pgvector` si quieres knowledge vectorial.
+- Node.js 18+ solo si vas a usar WhatsApp QR o validar Mintlify localmente.
+
+## Ruta publica
+
+```bash
+pip install openagno
+```
+
+## Ruta desde codigo fuente
+
+```bash
+git clone https://github.com/OpenAgno/OpenAgno.git
+cd OpenAgno
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+## Ruta para contributors
+
+Si tambien necesitas tests, builds, AG-UI o A2A:
+
+```bash
+pip install -e '.[dev,protocols]'
+```
+
+Para preparar un build local:
+
+```bash
+python -m build
+```
+
+## Explora templates
+
+```bash
+openagno templates list
+openagno templates show personal_assistant
+```
+
+## Completa `.env`
+
+Variables comunes:
+
+- `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+- `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
+- `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
+- `TELEGRAM_TOKEN`
+- `OPENAGNO_API_KEY` si quieres proteger rutas custom
+
+## Arranque recomendado
+
+Primer arranque:
+
+```bash
+openagno init --template personal_assistant
+openagno validate
+openagno start --foreground
+```
+
+Modo supervisor:
+
+```bash
+openagno start
+openagno status
+openagno logs --follow
+```
+
+## Chequeo de salud
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+## Notas practicas
+
+- Si eliges `database.type: sqlite`, OpenAgno sigue funcionando, pero sin vector knowledge.
+- Slack y Telegram forman parte de la instalacion base.
+- `agui` y `a2a` requieren `pip install -e '.[protocols]'`.
+- Para WhatsApp Cloud API en local, revisa [/es/whatsapp-tunnel](/es/whatsapp-tunnel).
+- Si prefieres una ruta guiada, revisa [/es/getting-started-no-code](/es/getting-started-no-code).

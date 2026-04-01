@@ -1,0 +1,85 @@
+---
+title: MCP
+description: Configura MCP en OpenAgno y conecta la documentacion publica con IDEs y asistentes AI.
+---
+
+OpenAgno puede usar MCP en dos capas:
+
+1. **Como cliente**, conectando servidores externos declarados en `workspace/mcp.yaml`.
+2. **Como servidor**, exponiendo el endpoint MCP embebido del runtime cuando `agentos.enable_mcp_server` esta activo.
+
+## MCP como cliente
+
+Ejemplo:
+
+```yaml
+servers:
+  - name: agno_docs
+    transport: streamable-http
+    url: https://docs.agno.com/mcp
+    enabled: true
+  - name: supabase
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@supabase/mcp-server-supabase@latest"
+      - --access-token
+      - ${SUPABASE_ACCESS_TOKEN}
+    enabled: false
+
+expose:
+  enabled: true
+```
+
+## Lo que soporta el loader
+
+- `streamable-http`
+- `sse`
+- `stdio`
+- resolucion de `${VAR}` dentro de strings, listas y diccionarios
+- `env` por servidor para `stdio`
+- merge declarativo de integraciones
+
+## MCP embebido
+
+Cuando `agentos.enable_mcp_server` esta activo, AgentOS expone su propio servidor MCP junto a las rutas del runtime.
+
+Eso permite:
+
+- conectar IDEs o clientes MCP externos
+- usar Studio con el OS local
+- exponer tools y contexto del runtime de forma controlada
+
+## OpenAgno Docs como servidor MCP
+
+La documentacion publica ya esta disponible como servidor MCP remoto en:
+
+```text
+https://docs.openagno.com/mcp
+```
+
+Tambien expone indices AI-friendly en:
+
+```text
+https://docs.openagno.com/llms.txt
+```
+
+## Conectar desde Claude Code
+
+```bash
+claude mcp add openagno https://docs.openagno.com/mcp
+```
+
+## Conectar desde Cursor o VS Code
+
+```bash
+npx mint-mcp add openagno https://docs.openagno.com/mcp
+```
+
+## Recomendaciones
+
+- Usa `streamable-http` para servidores remotos cuando exista soporte oficial.
+- Usa `stdio` para servidores locales que dependan de `npx` o binarios locales.
+- Si una integracion necesita credenciales propias, declara el servidor MCP bajo `workspace/integrations/<id>/integration.yaml`.
+- Para setup especifico de IDEs, revisa tambien [/es/ide-integration](/es/ide-integration).

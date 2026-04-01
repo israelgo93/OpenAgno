@@ -1,13 +1,11 @@
 ---
-title: Overview / Resumen
+title: Overview
 description: What OpenAgno is today, what it solves, and where to start if you are technical or non-technical.
 ---
 
 OpenAgno is a platform built on **Agno** for creating and operating agents through a **declarative workspace**. It combines a packaged CLI, an AgentOS/FastAPI runtime, reusable templates, channel integrations, PgVector-backed knowledge, and MCP support.
 
-## English
-
-### What exists today
+## What exists today
 
 - CLI `openagno`
 - declarative workspace in YAML and Markdown
@@ -18,14 +16,14 @@ OpenAgno is a platform built on **Agno** for creating and operating agents throu
 - PgVector on PostgreSQL or Supabase
 - Mintlify docs and automated tests
 
-### What phase 10 adds
+## What phase 10 adds
 
 - tenant provisioning routes
 - tenant-aware knowledge isolation built on Agno filters
 - IDE-ready MCP exports
-- bilingual onboarding for developers and non-developers
+- localized Mintlify docs with a dedicated Spanish section under `docs/es`
 
-### Recommended flow
+## Recommended flow
 
 1. Install the project.
 2. Create a workspace from a template.
@@ -35,33 +33,11 @@ OpenAgno is a platform built on **Agno** for creating and operating agents throu
 
 The public documentation also exposes an MCP endpoint at `https://docs.openagno.com/mcp` and AI-friendly indexes at `https://docs.openagno.com/llms.txt`.
 
-## Español
-
-OpenAgno es una plataforma sobre **Agno** para construir y operar agentes mediante un **workspace declarativo**. Combina una CLI empaquetada, un runtime AgentOS/FastAPI, templates reutilizables, canales, knowledge con PgVector y soporte MCP.
-
-### Lo que existe hoy
-
-- CLI `openagno`
-- workspace declarativo en YAML y Markdown
-- runtime AgentOS con rutas operativas y knowledge
-- templates empaquetados
-- canales: WhatsApp, Slack y Telegram
-- soporte opcional para AG-UI y A2A
-- PgVector sobre PostgreSQL o Supabase
-- documentación Mintlify y tests automatizados
-
-### Lo que agrega la fase 10
-
-- rutas de aprovisionamiento multi-tenant
-- aislamiento tenant-aware sobre knowledge usando filtros nativos de Agno
-- exportaciones MCP para IDEs
-- onboarding bilingüe para perfiles técnicos y no técnicos
-
 <CardGroup cols={2}>
-	<Card title="Quickstart / Inicio rápido" icon="rocket" href="/quickstart">
+	<Card title="Quickstart" icon="rocket" href="/quickstart">
 		Installation, first workspace, and runtime startup.
 	</Card>
-	<Card title="No-code / Sin tocar código" icon="sparkles" href="/getting-started-no-code">
+	<Card title="No-code" icon="sparkles" href="/getting-started-no-code">
 		Guided local setup without touching Python code.
 	</Card>
 	<Card title="Workspace" icon="folder" href="/workspace/overview">
@@ -70,10 +46,10 @@ OpenAgno es una plataforma sobre **Agno** para construir y operar agentes median
 	<Card title="CLI" icon="terminal" href="/cli">
 		Supported commands in the packaged `openagno` workflow.
 	</Card>
-	<Card title="Channels / Canales" icon="message-circle" href="/channels">
+	<Card title="Channels" icon="message-circle" href="/channels">
 		Runtime channels and their operational requirements.
 	</Card>
-	<Card title="IDE integration / Integración" icon="plug-zap" href="/ide-integration">
+	<Card title="IDE integration" icon="plug-zap" href="/ide-integration">
 		Connect the docs and runtime to AI-powered IDEs.
 	</Card>
 </CardGroup>
