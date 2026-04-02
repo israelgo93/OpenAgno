@@ -63,6 +63,15 @@ OpenAgno now includes tenant-aware routes:
 
 The runtime uses Agno-native isolation with `Knowledge(..., isolate_vector_search=True)` and `knowledge_filters={"linked_to": "<tenant>"}`.
 
+## Knowledge and PgVector
+
+OpenAgno keeps knowledge in a PgVector-backed PostgreSQL or Supabase setup and exposes a REST surface for upload, listing, deletion, and semantic search through `/knowledge/*`.
+
+If you are deploying the OSS runtime for Cloud, validate both:
+
+- database connectivity for embeddings and vector search
+- tenant-aware filters for isolated knowledge retrieval
+
 ## IDE and AI integration
 
 - MCP: `https://docs.openagno.com/mcp`

@@ -3,7 +3,7 @@
 # ===================================
 
 # Agno Framework (AgentOS + scheduler cron)
-agno[os,scheduler]>=1.5.0
+agno[os,scheduler]>=2.5.0
 
 # Modelos de IA
 openai>=1.30.0
