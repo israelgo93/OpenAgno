@@ -2,26 +2,45 @@
 
 [![PyPI version](https://badge.fury.io/py/openagno.svg)](https://pypi.org/project/openagno/)
 
-OpenAgno is a declarative agent platform built on **Agno**. It packages a CLI, an AgentOS/FastAPI runtime, reusable workspace templates, MCP support, channel integrations, PgVector-backed knowledge, and tenant-aware provisioning for multi-tenant deployments.
+OpenAgno is a declarative agent platform built on top of Agno. It packages a CLI, a FastAPI and AgentOS runtime, reusable workspace templates, tenant-aware provisioning, MCP connectivity, channel integrations, scheduler tooling, and PgVector-backed knowledge retrieval in a single repository.
 
-## What exists today
+## What ships in this repo
 
-- packaged CLI: `openagno`
-- declarative `workspace/` with YAML + Markdown
-- AgentOS runtime with admin, knowledge, and channel routes
-- packaged templates for common assistants
-- WhatsApp, Slack, Telegram, AG-UI, and A2A support
-- PgVector-backed knowledge on PostgreSQL or Supabase
-- public docs with MCP and `llms.txt`
-- tenant provisioning routes and tenant-scoped agent runs
+- `openagno` CLI for workspace lifecycle, runtime control, validation, templates, and deployment helpers
+- FastAPI runtime with AgentOS integration
+- declarative `workspace/` configuration based on YAML and Markdown files
+- built-in workspace templates for common agent setups
+- tenant-aware routes and tenant-scoped workspace execution
+- knowledge ingestion, listing, deletion, and semantic search over PgVector
+- MCP client and MCP server support
+- channel and protocol surfaces including WhatsApp, Slack, Telegram, AG-UI, and A2A
+- scheduler support for recurring agent jobs
+- public docs, IDE config files, and local service and container helpers
+
+## Repository layout
+
+- `openagno/commands` CLI commands exposed by `openagno`
+- `openagno/core` tenant, workspace, and runtime primitives
+- `openagno/templates` packaged starter templates
+- `routes` FastAPI route builders for admin, tenants, knowledge, channels, and integrations
+- `tools` optional runtime tools such as workspace and scheduler management
+- `workspace` the default declarative workspace loaded by the runtime
+- `workspaces` provisioned tenant workspaces when the local workspace store backend is used
+- `deploy` deployment scripts, including systemd installation
+- `bridges` auxiliary channel bridges such as the WhatsApp QR bridge
+- `docs` Mintlify documentation, including English and Spanish trees
+- `ide-configs` ready-made MCP client config files for supported editors
+- `tests` automated test suite
 
 ## Installation
+
+Install from PyPI:
 
 ```bash
 pip install openagno
 ```
 
-Or install from source:
+Install from source:
 
 ```bash
 git clone https://github.com/OpenAgno/OpenAgno.git
@@ -31,18 +50,37 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-For contributors, builds, tests, and protocol extras:
+Install with validation and protocol extras:
 
 ```bash
 pip install -e '.[dev,protocols]'
 ```
 
+Python `>=3.10` is required.
+
 ## Quickstart
+
+List available templates:
 
 ```bash
 openagno templates list
+```
+
+Initialize a workspace from a template:
+
+```bash
 openagno init --template personal_assistant
+```
+
+Validate the workspace:
+
+```bash
 openagno validate
+```
+
+Start the runtime:
+
+```bash
 openagno start --foreground
 ```
 
@@ -52,36 +90,209 @@ Health check:
 curl http://127.0.0.1:8000/admin/health
 ```
 
-## Tenant provisioning
+## CLI surface
 
-OpenAgno now includes tenant-aware routes:
+Main commands:
 
+- `openagno init`
+- `openagno start`
+- `openagno stop`
+- `openagno restart`
+- `openagno status`
+- `openagno logs`
+- `openagno validate`
+
+Grouped commands:
+
+- `openagno create`
+- `openagno add`
+- `openagno templates`
+- `openagno deploy`
+
+The CLI entrypoint is defined in `openagno/cli.py` and maps directly to the command modules under `openagno/commands/`.
+
+## Templates
+
+The packaged template registry currently includes:
+
+- `personal_assistant`
+- `customer_support`
+- `developer_assistant`
+- `research_agent`
+- `sales_agent`
+
+Templates live in `openagno/templates/` and are copied into a new workspace through `openagno init`.
+
+## Workspace model
+
+The runtime is driven by the declarative files under `workspace/`.
+
+Core files:
+
+- `workspace/config.yaml`
+- `workspace/instructions.md`
+- `workspace/self_knowledge.md`
+- `workspace/tools.yaml`
+- `workspace/mcp.yaml`
+- `workspace/schedules.yaml`
+- `workspace/agents/*.yaml`
+- `workspace/knowledge/urls.yaml`
+
+Optional extension surface:
+
+- `workspace/integrations/*`
+
+The default workspace config in this repository currently enables:
+
+- main agent id `agnobot-main`
+- model provider `google` with `gemini-2.5-flash`
+- local database mode by default
+- hybrid knowledge search
+- agentic memory
+- scheduler polling
+- AgentOS embedded MCP server
+
+The loader merges the base workspace with enabled integrations, builds runtime tools from `tools.yaml`, builds MCP clients from `mcp.yaml`, constructs the knowledge layer, and then instantiates the main agent, sub-agents, teams, and schedules.
+
+## Runtime routes
+
+The runtime exposes an admin surface plus tenant and knowledge operations.
+
+Tenant routes:
+
+- `GET /tenants`
 - `POST /tenants`
 - `GET /tenants/{tenant_id}`
+- `PATCH /tenants/{tenant_id}`
+- `DELETE /tenants/{tenant_id}`
+- `GET /tenants/{tenant_id}/workspace`
 - `PUT /tenants/{tenant_id}/workspace`
 - `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
 
-The runtime uses Agno-native isolation with `Knowledge(..., isolate_vector_search=True)` and `knowledge_filters={"linked_to": "<tenant>"}`.
+Knowledge routes:
 
-## Knowledge and PgVector
+- `POST /knowledge/upload`
+- `POST /knowledge/ingest-urls`
+- `GET /knowledge/list`
+- `DELETE /knowledge/{doc_name}`
+- `POST /knowledge/search`
 
-OpenAgno keeps knowledge in a PgVector-backed PostgreSQL or Supabase setup and exposes a REST surface for upload, listing, deletion, and semantic search through `/knowledge/*`.
+The runtime also exposes the AgentOS and admin surfaces configured by `gateway.py`, including `/admin/health`.
 
-If you are deploying the OSS runtime for Cloud, validate both:
+## Multi-tenant execution
 
-- database connectivity for embeddings and vector search
-- tenant-aware filters for isolated knowledge retrieval
+OpenAgno includes tenant-aware isolation through the tenant store and workspace store layers. Tenant execution scopes identity, metadata, and knowledge filters so each run stays bound to its tenant context.
 
-## IDE and AI integration
+Key runtime behaviors:
 
-- MCP: `https://docs.openagno.com/mcp`
-- `llms.txt`: `https://docs.openagno.com/llms.txt`
-- config exports in `ide-configs/`
-- project skill in `.agents/skills/openagno/SKILL.md`
+- tenant creation provisions a workspace copy from a selected template
+- tenant updates can persist workspace config changes
+- tenant runs scope `user_id`, `session_id`, metadata, and knowledge filters
+- tenant knowledge retrieval uses isolated filters for vector search
 
-## Docs
+This is the contract consumed by `OpenAgnoCloud`.
 
-Local preview:
+## Knowledge and vector search
+
+OpenAgno uses PostgreSQL with PgVector for knowledge storage and retrieval. The default workspace config is prepared for hybrid search and can run against local Postgres or a hosted database such as Supabase.
+
+Supported document flow:
+
+- upload files through the knowledge API
+- ingest remote URLs
+- list indexed content
+- delete indexed content by document name
+- search semantically through the knowledge index
+
+The default workspace is configured to auto-ingest both local docs and declared URLs when enabled.
+
+## Tools and MCP
+
+`workspace/tools.yaml` defines built-in and optional tools.
+
+Built-in defaults in this repo:
+
+- `duckduckgo`
+- `crawl4ai`
+- `reasoning`
+
+Optional tools present in the default config:
+
+- `workspace`
+- `scheduler_mgmt`
+- `email`
+- `tavily`
+- `github`
+- `audio`
+- `shell`
+- `spotify`
+- `yfinance`
+- `wikipedia`
+- `arxiv`
+- `calculator`
+- `file_tools`
+- `python_tools`
+
+`workspace/mcp.yaml` defines external MCP connections. The default file includes examples for:
+
+- Agno Docs over `streamable-http`
+- Tavily over `streamable-http`
+- Supabase over `stdio`
+- GitHub over `stdio`
+
+The runtime can also expose its own MCP server when `agentos.enable_mcp_server: true` is enabled in `workspace/config.yaml`.
+
+## IDE integration
+
+Ready-made MCP client configs are available in:
+
+- `ide-configs/cursor-mcp.json`
+- `ide-configs/vscode-mcp.json`
+- `ide-configs/windsurf-mcp.json`
+
+Public references:
+
+- MCP docs: `https://docs.openagno.com/mcp`
+- AI index: `https://docs.openagno.com/llms.txt`
+- main docs: `https://docs.openagno.com`
+
+## Running locally
+
+### Python process
+
+```bash
+source .venv/bin/activate
+openagno start --foreground
+```
+
+### Docker Compose
+
+```bash
+docker compose up --build
+```
+
+This repository includes:
+
+- a `pgvector/pgvector:pg17` database service
+- a `gateway` service running `python gateway.py`
+- an optional `whatsapp-bridge` profile
+
+### systemd service
+
+Install the systemd unit:
+
+```bash
+sudo bash deploy/install-service.sh
+```
+
+That script installs:
+
+- `openagno.service`
+- `openagno-whatsapp-bridge.service` when the QR bridge is present and Node.js is available
+
+## Documentation
+
+Run the docs site locally:
 
 ```bash
 cd docs
@@ -89,7 +300,7 @@ npm install
 npm run dev
 ```
 
-Validation:
+Validate docs:
 
 ```bash
 cd docs
@@ -97,7 +308,31 @@ npm run validate
 npm run broken-links
 ```
 
-Spanish Mintlify pages are available under `docs/es/`.
+Spanish pages are published under `docs/es/`.
+
+## Release and validation
+
+Local verification used for the current `v1.2.1` closeout:
+
+```bash
+source .venv/bin/activate
+pytest -q
+python -m build
+ruff check
+python -m pip install --force-reinstall --no-deps dist/openagno-1.2.1-py3-none-any.whl
+python -c "import openagno; print(openagno.__version__)"
+```
+
+Expected results:
+
+- test suite passes
+- `ruff check` is clean
+- wheel build succeeds
+- installed package reports `1.2.1`
+
+## Current release posture
+
+The repository content reflects the `1.2.1` closeout work, but publishing to PyPI remains a separate operational step if the package has not been uploaded yet in the target account.
 
 ## License
 
