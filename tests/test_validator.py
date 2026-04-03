@@ -1,12 +1,10 @@
+# ruff: noqa: E402
 """
 Tests para management/validator.py — validacion del workspace.
 """
-import os
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 if str(REPO_ROOT) not in sys.path:

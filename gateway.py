@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 AgnoBot Gateway - Punto de entrada principal.
 Lee el workspace/ y construye el AgentOS completo.

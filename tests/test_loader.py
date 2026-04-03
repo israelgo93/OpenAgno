@@ -1,13 +1,11 @@
+# ruff: noqa: E402
 """
 Tests para loader.py — carga de configuracion y construccion de objetos.
 """
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-import yaml
 
 # Asegurar import
 REPO_ROOT = Path(__file__).parent.parent.resolve()

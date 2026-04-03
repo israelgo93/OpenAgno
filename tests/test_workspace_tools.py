@@ -1,12 +1,11 @@
+# ruff: noqa: E402
 """
 Tests para tools/workspace_tools.py — validacion de provider y tools.
 """
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
 if str(REPO_ROOT) not in sys.path:

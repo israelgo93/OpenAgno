@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import typer
 
 from openagno.commands._common import console, project_root, run_python_script
 

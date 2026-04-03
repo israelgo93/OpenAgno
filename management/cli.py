@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 CLI de Onboarding v6 - Setup, diagnostico, reconfiguracion y chat interactivo.
 
@@ -30,11 +31,11 @@ import yaml
 from pathlib import Path
 
 from dotenv import load_dotenv
-from management.validator import validate_workspace, print_validation
+from management.validator import validate_workspace
 
 
 def _handle_sigint(signum, frame):
-	print(f"\n\n  Cancelado por el usuario.\n")
+	print("\n\n  Cancelado por el usuario.\n")
 	sys.exit(130)
 
 
@@ -129,7 +130,7 @@ def _prompt(text: str, default: str = "") -> str:
 	try:
 		value = input(f"  {text}{suffix}: ").strip()
 	except (EOFError, KeyboardInterrupt):
-		print(f"\n\n  Cancelado.\n")
+		print("\n\n  Cancelado.\n")
 		sys.exit(130)
 	return value or default
 
@@ -142,7 +143,7 @@ def _prompt_choice(text: str, options: dict[str, str], default: str = "1") -> st
 	try:
 		return input(f"  Seleccion [{default}]: ").strip() or default
 	except (EOFError, KeyboardInterrupt):
-		print(f"\n\n  Cancelado.\n")
+		print("\n\n  Cancelado.\n")
 		sys.exit(130)
 
 
@@ -152,7 +153,7 @@ def _prompt_yn(text: str, default: bool = False) -> bool:
 	try:
 		value = input(f"  {text} {suffix}: ").strip().lower()
 	except (EOFError, KeyboardInterrupt):
-		print(f"\n\n  Cancelado.\n")
+		print("\n\n  Cancelado.\n")
 		sys.exit(130)
 	if not value:
 		return default
@@ -190,7 +191,7 @@ def _setup_qr_bridge(wa_mode: str) -> None:
 		# Verificar Node.js
 		if not shutil.which("node"):
 			print(f"\n  {_warn('Node.js no instalado')}")
-			print(f"  Instala Node.js 18+ o usa Docker:")
+			print("  Instala Node.js 18+ o usa Docker:")
 			print(f"  {BOLD}docker compose --profile qr up -d{RESET}")
 			return
 
@@ -217,7 +218,7 @@ def _setup_qr_bridge(wa_mode: str) -> None:
 				return
 
 		# Arrancar el bridge
-		print(f"\n  Iniciando bridge WhatsApp QR en puerto 3001...")
+		print("\n  Iniciando bridge WhatsApp QR en puerto 3001...")
 		log_path = bridge_dir / "bridge.log"
 		subprocess.Popen(
 			["node", "index.js"],
@@ -249,7 +250,7 @@ def _setup_qr_bridge(wa_mode: str) -> None:
 	print(f"  {BOLD}Vinculacion WhatsApp via QR{RESET}")
 	print(f"  {CYAN}{'━' * 48}{RESET}")
 	print()
-	print(f"  1. Abre WhatsApp en tu telefono")
+	print("  1. Abre WhatsApp en tu telefono")
 	print(f"  2. Ve a {BOLD}Configuracion > Dispositivos vinculados{RESET}")
 	print(f"  3. Toca {BOLD}Vincular un dispositivo{RESET}")
 	print()
@@ -273,7 +274,7 @@ def _setup_qr_bridge(wa_mode: str) -> None:
 			return ""
 
 	# Esperar a que el bridge genere el primer QR
-	print(f"  Esperando QR de WhatsApp...")
+	print("  Esperando QR de WhatsApp...")
 	qr_raw = ""
 	for _ in range(15):
 		_time.sleep(2)
@@ -302,10 +303,10 @@ def _setup_qr_bridge(wa_mode: str) -> None:
 	print()
 	print(f"  {DIM}(O despues de iniciar el gateway: http://localhost:8000/whatsapp-qr/code){RESET}")
 	print()
-	print(f"  Luego escanea desde WhatsApp > Dispositivos vinculados")
+	print("  Luego escanea desde WhatsApp > Dispositivos vinculados")
 	print(f"  {DIM}Presiona Ctrl+C para cancelar la espera.{RESET}")
 	print()
-	print(f"  Esperando vinculacion ", end="", flush=True)
+	print("  Esperando vinculacion ", end="", flush=True)
 
 	try:
 		for tick in range(120):
@@ -456,7 +457,7 @@ def run_onboarding() -> None:
 	non_audio_providers = {"aws_bedrock", "aws_bedrock_claude", "anthropic"}
 
 	if provider in non_audio_providers:
-		print(f"\nPASO 2b: Configuracion de Audio")
+		print("\nPASO 2b: Configuracion de Audio")
 		print(f"  El modelo {model_id} no soporta audio nativo.")
 		auto_transcribe = _prompt_yn(
 			"Activar transcripcion automatica de audios (Whisper)?", default=True
@@ -869,14 +870,14 @@ Tips:
 	else:
 		print("  Workspace generado con advertencias")
 	print("=" * 50)
-	print(f"  workspace/config.yaml    - Configuracion central")
-	print(f"  workspace/instructions.md - Personalidad")
-	print(f"  workspace/tools.yaml     - Herramientas")
-	print(f"  workspace/mcp.yaml       - Servidores MCP")
-	print(f"  workspace/knowledge/     - Documentos RAG")
-	print(f"  workspace/agents/        - Sub-agentes y Teams")
-	print(f"  workspace/schedules.yaml - Plantilla cron (referencia; registrar en AgentOS)")
-	print(f"  .env                     - Secretos")
+	print("  workspace/config.yaml    - Configuracion central")
+	print("  workspace/instructions.md - Personalidad")
+	print("  workspace/tools.yaml     - Herramientas")
+	print("  workspace/mcp.yaml       - Servidores MCP")
+	print("  workspace/knowledge/     - Documentos RAG")
+	print("  workspace/agents/        - Sub-agentes y Teams")
+	print("  workspace/schedules.yaml - Plantilla cron (referencia; registrar en AgentOS)")
+	print("  .env                     - Secretos")
 
 	if errors:
 		print()
@@ -888,8 +889,8 @@ Tips:
 		print("  Paso 1: docker compose up -d db")
 	step = "2" if db_type == "local" else "1"
 	print(f"  Paso {step}: python gateway.py")
-	print(f"  Web UI: os.agno.com -> Add OS -> Local -> http://localhost:8000")
-	print(f"  Scheduler: POST /schedules (cron) si scheduler.enabled en config.yaml")
+	print("  Web UI: os.agno.com -> Add OS -> Local -> http://localhost:8000")
+	print("  Scheduler: POST /schedules (cron) si scheduler.enabled en config.yaml")
 
 	if "whatsapp" in channels:
 		if wa_mode in ("cloud_api", "dual"):
@@ -1001,7 +1002,7 @@ def run_doctor() -> None:
 	print()
 	if fixes_applied:
 		print(f"  Se aplicaron {fixes_applied} reparacion(es)")
-	print(f"  Ejecuta 'python -m management.validator' para re-validar")
+	print("  Ejecuta 'python -m management.validator' para re-validar")
 	print("=" * 50)
 	print()
 
@@ -1065,8 +1066,8 @@ def _doctor_check_model(config: dict, env: dict) -> None:
 	if fallback.get("id"):
 		print(f"  [INFO] Modelo fallback: {fallback.get('provider', provider)} / {fallback['id']}")
 	else:
-		print(f"  [WARN] Sin modelo fallback configurado (util para rate limits)")
-		print(f"         Ejecuta: python -m management.cli fallback")
+		print("  [WARN] Sin modelo fallback configurado (util para rate limits)")
+		print("         Ejecuta: python -m management.cli fallback")
 
 
 def _doctor_check_ssl() -> None:
@@ -1164,7 +1165,7 @@ def run_fallback() -> None:
 		print("\n  Modelos Bedrock disponibles:")
 		for k, (mid, label) in BEDROCK_MODELS.items():
 			print(f"    [{k}] {label} ({mid})")
-		sub = input(f"  Seleccion [2]: ").strip() or "2"
+		sub = input("  Seleccion [2]: ").strip() or "2"
 		fb_id, _ = BEDROCK_MODELS.get(sub, BEDROCK_MODELS["2"])
 		fb_provider = "aws_bedrock_claude" if "anthropic" in fb_id else "aws_bedrock"
 		fb_key = "AWS_ACCESS_KEY_ID"
@@ -1189,8 +1190,8 @@ def run_fallback() -> None:
 	_write_yaml(Path("workspace/config.yaml"), config)
 
 	print(f"\n  [OK] Fallback configurado: {fb_provider} / {fb_id}")
-	print(f"  Cuando el modelo principal falle (rate limit, error), se usara el fallback")
-	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
+	print("  Cuando el modelo principal falle (rate limit, error), se usara el fallback")
+	print("  Reinicia el gateway para aplicar: python service_manager.py restart")
 	print()
 
 
@@ -1303,7 +1304,7 @@ def _configure_model(config: dict) -> None:
 				pass
 
 	print(f"\n  [OK] Modelo actualizado: {provider} / {model_id}")
-	print(f"  Reinicia el gateway para aplicar")
+	print("  Reinicia el gateway para aplicar")
 
 
 def _configure_database(config: dict) -> None:
@@ -1385,7 +1386,7 @@ def _configure_env_keys() -> None:
 			_update_env_var(k.strip(), v.strip())
 			print(f"    [OK] {k.strip()} actualizado")
 		else:
-			print(f"    [ERROR] Formato: VARIABLE=valor")
+			print("    [ERROR] Formato: VARIABLE=valor")
 
 
 def _configure_tools(config: dict) -> None:
@@ -1430,7 +1431,7 @@ def _configure_identity(config: dict) -> None:
 def _configure_audio(config: dict) -> None:
 	"""Reconfigura audio (transcripcion STT / sintesis TTS)."""
 	audio = config.get("audio", {})
-	print(f"\n  Configuracion de audio actual:")
+	print("\n  Configuracion de audio actual:")
 	print(f"    Auto-transcripcion: {'ON' if audio.get('auto_transcribe') else 'OFF'}")
 	print(f"    Modelo STT: {audio.get('stt_model', 'whisper-1')}")
 	print(f"    TTS: {'ON' if audio.get('tts_enabled') else 'OFF'}")
@@ -1493,7 +1494,7 @@ def _configure_audio(config: dict) -> None:
 		_write_yaml(tools_path, tools)
 
 	print(f"\n  [OK] Audio actualizado: STT={'ON' if auto_transcribe else 'OFF'}, TTS={'ON' if tts_enabled else 'OFF'}")
-	print(f"  Reinicia el gateway para aplicar: python service_manager.py restart")
+	print("  Reinicia el gateway para aplicar: python service_manager.py restart")
 
 
 # ==============================
@@ -1541,7 +1542,7 @@ def run_chat() -> None:
 	config = _load_current_config()
 	if not config:
 		print(f"\n  {_error('No hay workspace configurado.')}")
-		print(f"  Ejecuta: python -m management.cli")
+		print("  Ejecuta: python -m management.cli")
 		return
 
 	agent_name = config.get("agent", {}).get("name", "AgnoBot")
@@ -1771,7 +1772,7 @@ def main() -> None:
 			print()
 		case _:
 			print(f"  {_error(f'Comando desconocido: {command}')}")
-			print(f"  Ejecuta: python -m management.cli help")
+			print("  Ejecuta: python -m management.cli help")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,6 @@ from pathlib import Path
 from datetime import datetime
 
 from agno.tools import Toolkit
-from agno.utils.log import logger
 
 OPENAGNO_ROOT = Path(os.getenv("OPENAGNO_ROOT", Path(__file__).parent.parent.resolve()))
 WORKSPACE_DIR = OPENAGNO_ROOT / "workspace"

@@ -21,7 +21,6 @@ import urllib.request
 import urllib.error
 
 from agno.tools import Toolkit
-from agno.utils.log import logger
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://127.0.0.1:8000")
 
