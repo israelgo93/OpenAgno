@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLAlchemyTimeoutError
+from starlette.concurrency import run_in_threadpool
 
 from openagno.core.tenant import TenantStore, build_tenant_knowledge_filters, scope_identity
 from openagno.core.workspace_store import WorkspaceStore
@@ -60,15 +62,20 @@ def create_tenant_router(
 ) -> APIRouter:
 	router = APIRouter(prefix="/tenants", tags=["tenants"], dependencies=[Depends(verify_api_key)])
 
-	@router.get("/")
-	async def list_tenants(active_only: bool = False) -> dict[str, Any]:
-		tenants = tenant_store.list_tenants(active_only=active_only)
+	async def _run_storage(callable_obj, *args, **kwargs):
+		try:
+			return await run_in_threadpool(callable_obj, *args, **kwargs)
+		except (OperationalError, SQLAlchemyTimeoutError) as exc:
+			raise HTTPException(status_code=503, detail="Tenant storage unavailable") from exc
+
+	async def _list_tenants(active_only: bool = False) -> dict[str, Any]:
+		tenants = await _run_storage(tenant_store.list_tenants, active_only=active_only)
 		return {"tenants": [tenant.to_dict() for tenant in tenants], "count": len(tenants)}
 
-	@router.post("/")
-	async def create_tenant(payload: TenantCreateRequest) -> dict[str, Any]:
+	async def _create_tenant(payload: TenantCreateRequest) -> dict[str, Any]:
 		try:
-			tenant = tenant_store.create_tenant(
+			tenant = await _run_storage(
+				tenant_store.create_tenant,
 				name=payload.name,
 				slug=payload.slug,
 				plan=payload.plan,
@@ -79,7 +86,8 @@ def create_tenant_router(
 		except ValueError as exc:
 			raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-		workspace_path = workspace_store.provision(
+		workspace_path = await run_in_threadpool(
+			workspace_store.provision,
 			tenant.slug,
 			template=payload.template,
 			workspace_config=payload.workspace_config,
@@ -90,9 +98,14 @@ def create_tenant_router(
 			"workspace_backend": workspace_store.backend,
 		}
 
+	router.add_api_route("", _list_tenants, methods=["GET"], name="list_tenants_no_slash")
+	router.add_api_route("/", _list_tenants, methods=["GET"], name="list_tenants")
+	router.add_api_route("", _create_tenant, methods=["POST"], name="create_tenant_no_slash")
+	router.add_api_route("/", _create_tenant, methods=["POST"], name="create_tenant")
+
 	@router.get("/{tenant_id}")
 	async def get_tenant(tenant_id: str) -> dict[str, Any]:
-		tenant = tenant_store.get_tenant(tenant_id)
+		tenant = await _run_storage(tenant_store.get_tenant, tenant_id)
 		if tenant is None:
 			raise HTTPException(status_code=404, detail="Tenant not found")
 		return {"tenant": tenant.to_dict()}
@@ -100,48 +113,56 @@ def create_tenant_router(
 	@router.patch("/{tenant_id}")
 	async def update_tenant(tenant_id: str, payload: TenantUpdateRequest) -> dict[str, Any]:
 		try:
-			tenant = tenant_store.update_tenant(tenant_id, **payload.model_dump(exclude_none=True))
+			tenant = await _run_storage(
+				tenant_store.update_tenant,
+				tenant_id,
+				**payload.model_dump(exclude_none=True),
+			)
 		except KeyError as exc:
 			raise HTTPException(status_code=404, detail="Tenant not found") from exc
 		except ValueError as exc:
 			raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 		if payload.workspace_config:
-			workspace_store.write_config(tenant.slug, payload.workspace_config)
+			await run_in_threadpool(
+				workspace_store.write_config,
+				tenant.slug,
+				payload.workspace_config,
+			)
 		return {"tenant": tenant.to_dict()}
 
 	@router.delete("/{tenant_id}")
 	async def deactivate_tenant(tenant_id: str) -> dict[str, Any]:
 		try:
-			tenant = tenant_store.deactivate_tenant(tenant_id)
+			tenant = await _run_storage(tenant_store.deactivate_tenant, tenant_id)
 		except KeyError as exc:
 			raise HTTPException(status_code=404, detail="Tenant not found") from exc
 		return {"tenant": tenant.to_dict(), "status": "deactivated"}
 
 	@router.get("/{tenant_id}/workspace")
 	async def get_workspace_config(tenant_id: str) -> dict[str, Any]:
-		tenant = tenant_store.get_tenant(tenant_id)
+		tenant = await _run_storage(tenant_store.get_tenant, tenant_id)
 		if tenant is None:
 			raise HTTPException(status_code=404, detail="Tenant not found")
 		return {
 			"tenant": tenant.to_dict(),
 			"backend": workspace_store.backend,
-			"path": str(workspace_store.workspace_path(tenant.slug)),
-			"config": workspace_store.read_config(tenant.slug),
+			"path": str(await run_in_threadpool(workspace_store.workspace_path, tenant.slug)),
+			"config": await run_in_threadpool(workspace_store.read_config, tenant.slug),
 		}
 
 	@router.put("/{tenant_id}/workspace")
 	async def update_workspace_config(tenant_id: str, payload: WorkspaceConfigRequest) -> dict[str, Any]:
-		tenant = tenant_store.get_tenant(tenant_id)
+		tenant = await _run_storage(tenant_store.get_tenant, tenant_id)
 		if tenant is None:
 			raise HTTPException(status_code=404, detail="Tenant not found")
-		config = workspace_store.write_config(tenant.slug, payload.config)
-		tenant = tenant_store.update_tenant(tenant.id, workspace_config=config)
+		config = await run_in_threadpool(workspace_store.write_config, tenant.slug, payload.config)
+		tenant = await _run_storage(tenant_store.update_tenant, tenant.id, workspace_config=config)
 		return {"tenant": tenant.to_dict(), "config": config}
 
 	@router.post("/{tenant_id}/agents/{agent_id}/runs")
 	async def run_agent_for_tenant(tenant_id: str, agent_id: str, payload: TenantRunRequest) -> dict[str, Any]:
-		tenant = tenant_store.get_tenant(tenant_id)
+		tenant = await _run_storage(tenant_store.get_tenant, tenant_id)
 		if tenant is None:
 			raise HTTPException(status_code=404, detail="Tenant not found")
 		if not tenant.active:

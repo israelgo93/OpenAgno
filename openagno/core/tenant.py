@@ -10,6 +10,7 @@ from uuid import uuid4
 from agno.knowledge.knowledge import Knowledge
 from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, MetaData, String, Table, create_engine, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.pool import NullPool
 
 
 DEFAULT_TENANT = "default"
@@ -93,7 +94,16 @@ class TenantStore:
 	"""Persist tenant definitions in the same SQL database used by OpenAgno."""
 
 	def __init__(self, db_url: str):
-		self.engine: Engine = create_engine(db_url, future=True)
+		if db_url.startswith("sqlite"):
+			self.engine = create_engine(db_url, future=True)
+		else:
+			self.engine = create_engine(
+				db_url,
+				future=True,
+				connect_args={"connect_timeout": 5},
+				pool_pre_ping=True,
+				poolclass=NullPool,
+			)
 		_metadata.create_all(self.engine)
 
 	def _row_to_tenant(self, row: Any) -> Tenant:

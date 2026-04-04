@@ -4,6 +4,8 @@
 
 OpenAgno is a declarative agent platform built on top of Agno. It packages a CLI, a FastAPI and AgentOS runtime, reusable workspace templates, tenant-aware provisioning, MCP connectivity, channel integrations, scheduler tooling, and PgVector-backed knowledge retrieval in a single repository.
 
+`OpenAgnoCloud` sits in front of this runtime as the hosted control plane. Cloud owns signup, billing, customer and operator portals, and then drives this OSS runtime strictly through the supported HTTP tenant contract.
+
 ## What ships in this repo
 
 - `openagno` CLI for workspace lifecycle, runtime control, validation, templates, and deployment helpers
@@ -83,6 +85,8 @@ Start the runtime:
 ```bash
 openagno start --foreground
 ```
+
+For production or long-running WhatsApp traffic, prefer a single managed process such as the installed `systemd` unit. Do not run `systemctl`, `python gateway.py`, and `service_manager.py start` against the same workspace at the same time or you will create port and shutdown drift.
 
 Health check:
 
@@ -179,6 +183,20 @@ Knowledge routes:
 
 The runtime also exposes the AgentOS and admin surfaces configured by `gateway.py`, including `/admin/health`.
 
+WhatsApp modes currently supported by the runtime:
+
+- `cloud_api`
+- `qr_link`
+- `dual`
+
+The runtime already supports QR-based WhatsApp linking through the optional bridge and the `/whatsapp-qr/*` routes. That capability is available in OSS today even though the hosted Cloud onboarding still needs to expose it as a first-class customer flow.
+
+Operational notes for the tenant contract:
+
+- collection routes support both `/tenants` and `/tenants/`
+- tenant storage now fails fast with `503 Tenant storage unavailable` instead of hanging the runtime when the backing database is unavailable
+- tenant storage uses defensive Postgres connections for hosted databases such as Supabase session pooling
+
 ## Multi-tenant execution
 
 OpenAgno includes tenant-aware isolation through the tenant store and workspace store layers. Tenant execution scopes identity, metadata, and knowledge filters so each run stays bound to its tenant context.
@@ -191,6 +209,8 @@ Key runtime behaviors:
 - tenant knowledge retrieval uses isolated filters for vector search
 
 This is the contract consumed by `OpenAgnoCloud`.
+
+The runtime should stay focused on execution. Plan policy, customer onboarding, billing entitlements, and operator rollout logic should remain in Cloud and be translated into runtime configuration through this contract.
 
 ## Knowledge and vector search
 

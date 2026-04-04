@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from openagno.core.tenant import TenantStore
 from openagno.core.workspace_store import WorkspaceStore
@@ -62,6 +63,31 @@ def test_create_tenant_and_run_agent(tmp_path: Path):
 	assert agent.calls[0]["user_id"] == "acme-corp:alice"
 
 
+def test_collection_routes_support_trailing_and_non_trailing_slash(tmp_path: Path):
+	store = TenantStore(f"sqlite:///{tmp_path / 'tenant-collection-routes.db'}")
+	workspace_store = WorkspaceStore(base_dir=tmp_path / "tenant-workspaces")
+
+	app = FastAPI()
+	app.include_router(create_tenant_router(store, workspace_store, {}))
+	client = TestClient(app)
+
+	create_without_slash = client.post("/tenants", json={"name": "No Slash Org"})
+	assert create_without_slash.status_code == 200
+	assert create_without_slash.json()["tenant"]["slug"] == "no-slash-org"
+
+	create_with_slash = client.post("/tenants/", json={"name": "Slash Org"})
+	assert create_with_slash.status_code == 200
+	assert create_with_slash.json()["tenant"]["slug"] == "slash-org"
+
+	list_without_slash = client.get("/tenants")
+	assert list_without_slash.status_code == 200
+	assert list_without_slash.json()["count"] == 2
+
+	list_with_slash = client.get("/tenants/")
+	assert list_with_slash.status_code == 200
+	assert list_with_slash.json()["count"] == 2
+
+
 def test_update_workspace_config(tmp_path: Path):
 	store = TenantStore(f"sqlite:///{tmp_path / 'tenant-config.db'}")
 	workspace_store = WorkspaceStore(base_dir=tmp_path / "tenant-workspaces")
@@ -79,3 +105,19 @@ def test_update_workspace_config(tmp_path: Path):
 	)
 	assert update_response.status_code == 200
 	assert update_response.json()["config"]["scheduler"]["enabled"] is False
+
+
+def test_collection_routes_fail_fast_when_storage_is_unavailable(tmp_path: Path):
+	workspace_store = WorkspaceStore(base_dir=tmp_path / "tenant-workspaces")
+
+	class _BrokenStore:
+		def list_tenants(self, *, active_only: bool = False):
+			raise OperationalError("select 1", {}, RuntimeError("db unavailable"))
+
+	app = FastAPI()
+	app.include_router(create_tenant_router(_BrokenStore(), workspace_store, {}))
+	client = TestClient(app)
+
+	response = client.get("/tenants")
+	assert response.status_code == 503
+	assert response.json()["detail"] == "Tenant storage unavailable"
