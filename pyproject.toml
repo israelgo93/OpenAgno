@@ -9,7 +9,7 @@ description = "Build autonomous AI agents with declarative YAML configuration"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "agno[os,scheduler]>=2.5.0",
+  "agno[os,scheduler]>=2.5.14",
   "aioboto3>=13.0",
   "anthropic>=0.30.0",
   "arxiv>=2.0.0",

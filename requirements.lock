@@ -1,6 +1,6 @@
 a2a-sdk==0.3.25
 ag-ui-protocol==0.1.14
-agno==2.5.10
+agno==2.5.14
 aioboto3==15.5.0
 aiobotocore==2.25.1
 aiofile==3.9.0

@@ -60,6 +60,16 @@ pip install -e '.[dev,protocols]'
 
 Python `>=3.10` is required.
 
+## Agno compatibility
+
+OpenAgno tracks the Agno `2.5.x` line and the direct dependency pins in this repo are aligned to Agno `2.5.14`, which was the latest stable release verified against PyPI on April 4, 2026.
+
+The runtime code paths in this repository continue to rely on documented Agno `AgentOS`, interface routers, and `linked_to` knowledge isolation behavior, which remain present in the current Agno documentation for:
+
+- `agno.os.AgentOS`
+- `agno.os.interfaces.whatsapp`, `slack`, `telegram`, and `a2a`
+- knowledge isolation through `linked_to` metadata and filter injection
+
 ## Quickstart
 
 List available templates:
@@ -190,6 +200,8 @@ WhatsApp modes currently supported by the runtime:
 - `dual`
 
 The runtime already supports QR-based WhatsApp linking through the optional bridge and the `/whatsapp-qr/*` routes. That capability is available in OSS today even though the hosted Cloud onboarding still needs to expose it as a first-class customer flow.
+
+`OpenAgnoCloud` now maps the hosted workspace contract into this existing runtime surface through `whatsapp.mode`, without adding a new API on the OSS side.
 
 Operational notes for the tenant contract:
 
