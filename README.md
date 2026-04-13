@@ -199,9 +199,9 @@ WhatsApp modes currently supported by the runtime:
 - `qr_link`
 - `dual`
 
-The runtime already supports QR-based WhatsApp linking through the optional bridge and the `/whatsapp-qr/*` routes. That capability is available in OSS today even though the hosted Cloud onboarding still needs to expose it as a first-class customer flow.
+The runtime supports QR-based WhatsApp linking through the optional Baileys bridge and the `/whatsapp-qr/*` routes. OpenAgno Cloud now exposes this as a first-class customer flow: after onboarding activation with `qr_link` mode, the customer sees a QR scanner page that polls the bridge and redirects to the dashboard once WhatsApp is connected.
 
-`OpenAgnoCloud` now maps the hosted workspace contract into this existing runtime surface through `whatsapp.mode`, without adding a new API on the OSS side.
+`OpenAgnoCloud` maps the hosted workspace contract into this existing runtime surface through `whatsapp.mode` (set to `dual` for simultaneous Cloud API and QR Link support), without adding new APIs on the OSS side.
 
 Operational notes for the tenant contract:
 
