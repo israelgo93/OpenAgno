@@ -80,9 +80,10 @@ def _resolve_config(config: dict[str, Any]) -> dict[str, Any]:
 	return {k: _resolve_value(v) for k, v in config.items()}
 
 
-def load_yaml(filename: str) -> dict[str, Any]:
-	"""Carga un archivo YAML del workspace."""
-	path = WORKSPACE_DIR / filename
+def load_yaml(filename: str, workspace_dir: Path | None = None) -> dict[str, Any]:
+	"""Carga un archivo YAML desde el directorio de workspace (o el default)."""
+	base = workspace_dir or WORKSPACE_DIR
+	path = base / filename
 	if not path.exists():
 		logger.warning(f"Archivo no encontrado: {path}")
 		return {}
@@ -232,9 +233,10 @@ def merge_mcp_config_with_integrations(
 	return merged
 
 
-def load_instructions() -> list[str]:
+def load_instructions(workspace_dir: Path | None = None) -> list[str]:
 	"""Carga instrucciones desde instructions.md."""
-	path = WORKSPACE_DIR / "instructions.md"
+	base = workspace_dir or WORKSPACE_DIR
+	path = base / "instructions.md"
 	if not path.exists():
 		return ["Eres un asistente personal multimodal."]
 	with open(path, "r", encoding="utf-8") as f:
@@ -684,13 +686,15 @@ TEAM_MODE_MAP: dict[str, TeamMode] = {
 def build_sub_agents(
 	db: Union[PostgresDb, SqliteDb],
 	knowledge: Optional[Knowledge],
+	workspace_dir: Path | None = None,
 ) -> list[Agent]:
 	"""
 	Carga sub-agentes desde workspace/agents/*.yaml.
 	Excluye teams.yaml (procesado por build_teams).
 	"""
+	base = workspace_dir or WORKSPACE_DIR
 	agents: list[Agent] = []
-	agents_dir = WORKSPACE_DIR / "agents"
+	agents_dir = base / "agents"
 	if not agents_dir.exists():
 		return agents
 
@@ -765,12 +769,13 @@ def build_sub_agents(
 def build_teams(
 	all_agents: list[Agent],
 	db: Union[PostgresDb, SqliteDb],
+	workspace_dir: Path | None = None,
 ) -> list[Team]:
 	"""
 	Carga Teams desde workspace/agents/teams.yaml.
 	Resuelve miembros por ID contra la lista de agentes disponibles.
 	"""
-	teams_data = load_yaml("agents/teams.yaml")
+	teams_data = load_yaml("agents/teams.yaml", workspace_dir=workspace_dir)
 	teams_list = teams_data.get("teams", [])
 	if not teams_list:
 		return []
@@ -838,9 +843,9 @@ def build_teams(
 	return teams
 
 
-def build_schedules() -> list[dict[str, str]]:
+def build_schedules(workspace_dir: Path | None = None) -> list[dict[str, str]]:
 	"""Carga schedules desde workspace/schedules.yaml."""
-	schedules_config = load_yaml("schedules.yaml")
+	schedules_config = load_yaml("schedules.yaml", workspace_dir=workspace_dir)
 	schedules: list[dict[str, str]] = []
 
 	for sched in schedules_config.get("schedules", []):
@@ -868,15 +873,16 @@ def build_schedules() -> list[dict[str, str]]:
 	return schedules
 
 
-def load_knowledge_urls() -> list[dict[str, str]]:
+def load_knowledge_urls(workspace_dir: Path | None = None) -> list[dict[str, str]]:
 	"""Carga URLs para ingesta desde workspace/knowledge/urls.yaml."""
-	urls_config = load_yaml("knowledge/urls.yaml")
+	urls_config = load_yaml("knowledge/urls.yaml", workspace_dir=workspace_dir)
 	return urls_config.get("urls", [])
 
 
-def get_knowledge_docs_paths() -> list[Path]:
+def get_knowledge_docs_paths(workspace_dir: Path | None = None) -> list[Path]:
 	"""Retorna lista de archivos soportados en workspace/knowledge/docs/."""
-	docs_dir = WORKSPACE_DIR / "knowledge" / "docs"
+	base = workspace_dir or WORKSPACE_DIR
+	docs_dir = base / "knowledge" / "docs"
 	if not docs_dir.exists():
 		return []
 
@@ -890,18 +896,27 @@ def get_knowledge_docs_paths() -> list[Path]:
 
 
 def load_workspace() -> dict[str, Any]:
+	"""Carga el workspace por defecto (WORKSPACE_DIR). Wrapper de compatibilidad."""
+	return load_workspace_from_dir(WORKSPACE_DIR)
+
+
+def load_workspace_from_dir(workspace_dir: Path) -> dict[str, Any]:
 	"""
-	Carga completa del workspace - retorna un dict con todos los objetos
-	necesarios para construir el AgentOS.
+	Carga completa del workspace desde un directorio arbitrario.
+
+	Retorna un dict con todos los objetos necesarios para construir el AgentOS.
+	Usado por el tenant_loader para aislar workspaces per-tenant sin modificar
+	el estado global del proceso.
 	"""
-	config = load_yaml("config.yaml")
-	integration_manifests = load_integration_manifests(WORKSPACE_DIR)
+	workspace_dir = Path(workspace_dir)
+	config = load_yaml("config.yaml", workspace_dir=workspace_dir)
+	integration_manifests = load_integration_manifests(workspace_dir)
 	preload_integration_environments(integration_manifests)
 	tools_config = merge_tools_config_with_integrations(
-		load_yaml("tools.yaml"), integration_manifests
+		load_yaml("tools.yaml", workspace_dir=workspace_dir), integration_manifests
 	)
 	mcp_config = merge_mcp_config_with_integrations(
-		load_yaml("mcp.yaml"), integration_manifests
+		load_yaml("mcp.yaml", workspace_dir=workspace_dir), integration_manifests
 	)
 
 	db_config = config.get("database", {})
@@ -915,10 +930,10 @@ def load_workspace() -> dict[str, Any]:
 	mcp_tools = build_mcp_tools(mcp_config)
 	tools.extend(mcp_tools)
 
-	instructions = load_instructions()
+	instructions = load_instructions(workspace_dir=workspace_dir)
 
 	# F7 — 7.4.2: Inyectar self_knowledge.md para auto-consciencia del agente
-	self_knowledge_path = WORKSPACE_DIR / "self_knowledge.md"
+	self_knowledge_path = workspace_dir / "self_knowledge.md"
 	if self_knowledge_path.exists():
 		self_knowledge = self_knowledge_path.read_text(encoding="utf-8")
 		instructions.append(self_knowledge)
@@ -979,12 +994,12 @@ def load_workspace() -> dict[str, Any]:
 		pre_hooks=[sanitize_session_history_pre_hook],
 	)
 
-	sub_agents = build_sub_agents(db, knowledge)
+	sub_agents = build_sub_agents(db, knowledge, workspace_dir=workspace_dir)
 	all_agents = [main_agent] + sub_agents
-	teams = build_teams(all_agents, db)
-	schedules = build_schedules()
-	knowledge_doc_paths = get_knowledge_docs_paths()
-	knowledge_urls = load_knowledge_urls()
+	teams = build_teams(all_agents, db, workspace_dir=workspace_dir)
+	schedules = build_schedules(workspace_dir=workspace_dir)
+	knowledge_doc_paths = get_knowledge_docs_paths(workspace_dir=workspace_dir)
+	knowledge_urls = load_knowledge_urls(workspace_dir=workspace_dir)
 
 	return {
 		"config": config,
@@ -1000,4 +1015,5 @@ def load_workspace() -> dict[str, Any]:
 		"schedules": schedules,
 		"knowledge_doc_paths": knowledge_doc_paths,
 		"knowledge_urls": knowledge_urls,
+		"workspace_dir": workspace_dir,
 	}

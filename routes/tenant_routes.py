@@ -10,6 +10,7 @@ from sqlalchemy.exc import OperationalError, TimeoutError as SQLAlchemyTimeoutEr
 from starlette.concurrency import run_in_threadpool
 
 from openagno.core.tenant import TenantStore, build_tenant_knowledge_filters, scope_identity
+from openagno.core.tenant_loader import TenantLoader
 from openagno.core.workspace_store import WorkspaceStore
 from security import verify_api_key
 
@@ -59,8 +60,28 @@ def create_tenant_router(
 	tenant_store: TenantStore,
 	workspace_store: WorkspaceStore,
 	agents_by_id: dict[str, Any],
+	tenant_loader: TenantLoader | None = None,
 ) -> APIRouter:
 	router = APIRouter(prefix="/tenants", tags=["tenants"], dependencies=[Depends(verify_api_key)])
+
+	def _resolve_agent_for_tenant(tenant_slug: str, agent_id: str):
+		"""Resuelve el agente correcto segun el tenant.
+
+		- Para el tenant operador ("default"), usa el mapa global agents_by_id.
+		- Para otros tenants, carga el workspace del tenant via tenant_loader
+		  y busca el agente por id dentro de main_agent + sub_agents.
+		"""
+		if tenant_loader is None or tenant_slug == "default":
+			return agents_by_id.get(agent_id)
+		try:
+			bundle = tenant_loader.get_or_load(tenant_slug)
+		except LookupError:
+			return None
+		tenant_agents = [bundle["main_agent"]] + list(bundle.get("sub_agents", []))
+		for agent in tenant_agents:
+			if getattr(agent, "id", None) == agent_id:
+				return agent
+		return None
 
 	async def _run_storage(callable_obj, *args, **kwargs):
 		try:
@@ -158,7 +179,21 @@ def create_tenant_router(
 			raise HTTPException(status_code=404, detail="Tenant not found")
 		config = await run_in_threadpool(workspace_store.write_config, tenant.slug, payload.config)
 		tenant = await _run_storage(tenant_store.update_tenant, tenant.id, workspace_config=config)
-		return {"tenant": tenant.to_dict(), "config": config}
+		cache_evicted = False
+		if tenant_loader is not None:
+			cache_evicted = tenant_loader.reload(tenant.slug)
+		return {"tenant": tenant.to_dict(), "config": config, "cache_evicted": cache_evicted}
+
+	@router.post("/{tenant_id}/reload")
+	async def reload_tenant_workspace(tenant_id: str) -> dict[str, Any]:
+		"""Invalida el cache del tenant_loader para forzar recarga del workspace."""
+		tenant = await _run_storage(tenant_store.get_tenant, tenant_id)
+		if tenant is None:
+			raise HTTPException(status_code=404, detail="Tenant not found")
+		evicted = False
+		if tenant_loader is not None:
+			evicted = tenant_loader.reload(tenant.slug)
+		return {"tenant": tenant.to_dict(), "status": "reloaded", "evicted": evicted}
 
 	@router.post("/{tenant_id}/agents/{agent_id}/runs")
 	async def run_agent_for_tenant(tenant_id: str, agent_id: str, payload: TenantRunRequest) -> dict[str, Any]:
@@ -168,7 +203,7 @@ def create_tenant_router(
 		if not tenant.active:
 			raise HTTPException(status_code=409, detail="Tenant is inactive")
 
-		agent = agents_by_id.get(agent_id)
+		agent = _resolve_agent_for_tenant(tenant.slug, agent_id)
 		if agent is None:
 			raise HTTPException(status_code=404, detail="Agent not found")
 

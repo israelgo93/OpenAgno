@@ -9,7 +9,6 @@ from uuid import uuid4
 
 from agno.knowledge.knowledge import Knowledge
 from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, MetaData, String, Table, create_engine, select
-from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
 
 

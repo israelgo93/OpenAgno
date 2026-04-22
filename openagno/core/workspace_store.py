@@ -67,14 +67,28 @@ class WorkspaceStore:
 		if self.backend == "s3":
 			raise RuntimeError("write_config is not supported for the S3 workspace backend")
 
-		config_path = self.workspace_path(tenant_slug) / "config.yaml"
-		config_path.parent.mkdir(parents=True, exist_ok=True)
+		workspace_dir = self.workspace_path(tenant_slug)
+		workspace_dir.mkdir(parents=True, exist_ok=True)
+		config_path = workspace_dir / "config.yaml"
 		current = self.read_config(tenant_slug)
 		current.update(updates)
 		config_path.write_text(
 			yaml.safe_dump(current, allow_unicode=True, sort_keys=False),
 			encoding="utf-8",
 		)
+
+		# Derrame a archivos que lee el loader del runtime:
+		# - instructions -> workspace/instructions.md
+		# - self_knowledge -> workspace/self_knowledge.md
+		# El loader espera archivos .md separados; si los dejamos solo dentro
+		# del config.yaml nunca llegan al agente.
+		instructions_value = current.get("instructions")
+		if isinstance(instructions_value, str) and instructions_value.strip():
+			(workspace_dir / "instructions.md").write_text(instructions_value, encoding="utf-8")
+		self_knowledge_value = current.get("self_knowledge")
+		if isinstance(self_knowledge_value, str) and self_knowledge_value.strip():
+			(workspace_dir / "self_knowledge.md").write_text(self_knowledge_value, encoding="utf-8")
+
 		return current
 
 	def _provision_from_s3(self, tenant_slug: str) -> Path:

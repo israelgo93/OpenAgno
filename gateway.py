@@ -316,27 +316,40 @@ async def lifespan(app: FastAPI):
 	yield
 
 
-def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
-	"""Monta rutas para WhatsApp QR bridge (DAT-240)."""
+def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
+	"""Monta rutas para WhatsApp QR bridge (DAT-240).
+
+	Las rutas resuelven el agente a ejecutar por tenant:
+	- tenant_slug="default" -> agente del operador con wrapper STT/TTS/Fallback
+	- tenant_slug=otro      -> agente del tenant cargado via tenant_loader
+	"""
 	import httpx
+	from openagno.core.tenant import DEFAULT_TENANT, normalize_tenant_id
+
+	def _session_url(slug: str, suffix: str) -> str:
+		return f"{bridge_url}/sessions/{slug}{suffix}"
 
 	@app.get("/whatsapp-qr/status")
-	async def wa_qr_status():
-		"""Estado de la conexión QR."""
+	async def wa_qr_status(tenant_slug: str = DEFAULT_TENANT):
+		"""Estado de la conexión QR para un tenant."""
+		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
-				resp = await client.get(f"{bridge_url}/status")
+				resp = await client.get(_session_url(slug, "/status"))
 				return resp.json()
 		except Exception as e:
 			return {"status": "bridge_unreachable", "error": str(e)}
 
 	@app.get("/whatsapp-qr/code")
-	async def wa_qr_code():
+	async def wa_qr_code(tenant_slug: str = DEFAULT_TENANT):
 		"""Pagina HTML con QR para escanear desde el navegador."""
 		from fastapi.responses import HTMLResponse
+		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
-				resp = await client.get(f"{bridge_url}/qr")
+				# Asegurar que la sesion existe (idempotente)
+				await client.post(_session_url(slug, ""))
+				resp = await client.get(_session_url(slug, "/qr"))
 				data = resp.json()
 			status = data.get("status", "unknown")
 			qr_data = data.get("qr")
@@ -351,6 +364,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 			return HTMLResponse(
 				"<html><body style='font-family:sans-serif;text-align:center;padding:40px;background:#f5f5f5'>"
 				"<h2>OpenAgno - WhatsApp QR</h2>"
+				f"<p>Tenant: <code>{slug}</code></p>"
 				"<p>Escanea desde WhatsApp &gt; Dispositivos vinculados</p>"
 				f"<img src='{qr_data}' style='width:300px;height:300px;border:8px solid white;border-radius:12px'/>"
 				"<p style='color:#888;margin-top:16px'>El QR se actualiza automaticamente</p>"
@@ -361,20 +375,23 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				f"<h2>Bridge no disponible</h2><p>{e}</p></body></html>", status_code=502)
 
 	@app.get("/whatsapp-qr/code/json")
-	async def wa_qr_code_json():
+	async def wa_qr_code_json(tenant_slug: str = DEFAULT_TENANT):
 		"""QR como JSON (para integraciones programaticas)."""
+		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
-				resp = await client.get(f"{bridge_url}/qr")
+				await client.post(_session_url(slug, ""))
+				resp = await client.get(_session_url(slug, "/qr"))
 				return resp.json()
 		except Exception as e:
 			return {"error": str(e)}
 
 	@app.post("/whatsapp-qr/incoming")
 	async def wa_qr_incoming(request: dict):
-		"""Recibe mensajes del bridge y los procesa con el agente (DAT-246)."""
+		"""Recibe mensajes del bridge y los procesa con el agente del tenant correspondiente."""
 		from agno.media import Audio as AgnoAudio, Image as AgnoImage
 
+		tenant_slug = normalize_tenant_id(request.get("tenant_slug"))
 		from_jid = request.get("from", "")
 		message_id = request.get("message_id", "")
 		text = request.get("text", "")
@@ -383,16 +400,15 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 		media_b64 = request.get("media", "")
 
 		if message_id and _wa_qr_dedup.is_duplicate(message_id):
-			logger.info(f"QR Bridge duplicado ignorado: {message_id[:20]}")
+			logger.info(f"[{tenant_slug}] QR Bridge duplicado ignorado: {message_id[:20]}")
 			return {"status": "duplicate_ignored"}
 
 		if not text and msg_type == "text":
 			return {"status": "ignored", "reason": "empty message"}
 
-		logger.info(f"QR Bridge mensaje de {from_jid}: {text[:80]} (tipo: {msg_type})")
+		logger.info(f"[{tenant_slug}] QR Bridge mensaje de {from_jid}: {text[:80]} (tipo: {msg_type})")
 
 		try:
-			# Decodificar media base64 si existe
 			media_bytes = None
 			if media_b64:
 				import base64
@@ -401,10 +417,9 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				except Exception as e:
 					logger.error(f"Error decodificando media b64: {e}")
 
-			# Construir kwargs validos para Agno Agent.arun
 			arun_kwargs: dict = {
-				"user_id": from_jid,
-				"session_id": from_jid,
+				"user_id": f"{tenant_slug}:{from_jid}",
+				"session_id": f"{tenant_slug}:{from_jid}",
 			}
 
 			if media_bytes and msg_type == "audio":
@@ -414,7 +429,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				)]
 				if not text or text.startswith("["):
 					text = "[Audio recibido]"
-				logger.info(f"QR Bridge audio preparado: {len(media_bytes)} bytes, mime={mime_type}")
+				logger.info(f"[{tenant_slug}] QR Bridge audio preparado: {len(media_bytes)} bytes, mime={mime_type}")
 
 			elif media_bytes and msg_type == "image":
 				arun_kwargs["images"] = [AgnoImage(
@@ -423,18 +438,26 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 				)]
 				if not text or text.startswith("["):
 					text = "Describe o analiza esta imagen"
-				logger.info(f"QR Bridge imagen preparada: {len(media_bytes)} bytes, mime={mime_type}")
+				logger.info(f"[{tenant_slug}] QR Bridge imagen preparada: {len(media_bytes)} bytes, mime={mime_type}")
 
 			elif media_bytes and msg_type in ("document", "video"):
-				# Documentos y videos: informar al agente sin adjuntar
 				if not text or text.startswith("["):
 					text = f"[{msg_type} recibido — tipo: {mime_type}]"
-				logger.info(f"QR Bridge {msg_type} recibido pero no procesable como media directa")
+				logger.info(f"[{tenant_slug}] QR Bridge {msg_type} recibido pero no procesable como media directa")
 
-			# Usar arun wrapped (con STT/TTS/Fallback) via _qr_agent_arun
-			response = await _qr_agent_arun(text, **arun_kwargs)
+			tenant_loader = app.state.tenant_loader
+			if tenant_slug == DEFAULT_TENANT:
+				# Agente operador con wrapper STT/TTS/Fallback
+				response = await _qr_agent_arun(text, **arun_kwargs)
+			else:
+				try:
+					bundle = tenant_loader.get_or_load(tenant_slug)
+				except LookupError as exc:
+					logger.error(f"[{tenant_slug}] No se pudo cargar workspace: {exc}")
+					return {"status": "error", "error": f"tenant_workspace_missing: {exc}"}
+				tenant_agent = bundle["main_agent"]
+				response = await tenant_agent.arun(text, **arun_kwargs)
 
-			# Extraer texto de la respuesta de forma segura
 			response_text = None
 			if response is not None:
 				if hasattr(response, 'content') and response.content is not None:
@@ -449,27 +472,27 @@ def _setup_whatsapp_qr_routes(app: FastAPI, agent, bridge_url: str):
 
 			if not response_text or not response_text.strip() or response_text == "None":
 				response_text = "Lo siento, no pude procesar tu mensaje. Intenta de nuevo."
-				logger.warning(f"QR Bridge respuesta vacia/None para {from_jid}, enviando fallback")
+				logger.warning(f"[{tenant_slug}] QR Bridge respuesta vacia/None para {from_jid}")
 			else:
 				response_text = response_text.strip()
 
-			logger.info(f"QR Bridge respuesta a {from_jid}: {response_text[:80]}")
+			logger.info(f"[{tenant_slug}] QR Bridge respuesta a {from_jid}: {response_text[:80]}")
 
 			async with httpx.AsyncClient(timeout=30) as client:
-				send_resp = await client.post(f"{bridge_url}/send", json={
-					"to": from_jid,
-					"text": response_text,
-				})
-				logger.info(f"QR Bridge send result: {send_resp.status_code}")
-			return {"status": "responded"}
+				send_resp = await client.post(
+					_session_url(tenant_slug, "/send"),
+					json={"to": from_jid, "text": response_text},
+				)
+				logger.info(f"[{tenant_slug}] QR Bridge send result: {send_resp.status_code}")
+			return {"status": "responded", "tenant_slug": tenant_slug}
 		except Exception as e:
-			logger.error(f"Error procesando mensaje QR de {from_jid}: {type(e).__name__}: {e}")
+			logger.error(f"[{tenant_slug}] Error procesando mensaje QR de {from_jid}: {type(e).__name__}: {e}")
 			try:
 				async with httpx.AsyncClient(timeout=10) as client:
-					await client.post(f"{bridge_url}/send", json={
-						"to": from_jid,
-						"text": "Ocurrio un error procesando tu mensaje. Intenta de nuevo en unos segundos.",
-					})
+					await client.post(
+						_session_url(tenant_slug, "/send"),
+						json={"to": from_jid, "text": "Ocurrio un error procesando tu mensaje. Intenta de nuevo en unos segundos."},
+					)
 			except Exception:
 				pass
 			return {"status": "error", "error": str(e)}
@@ -624,6 +647,17 @@ workspace_store = WorkspaceStore(
 base_app.state.tenant_store = tenant_store
 base_app.state.workspace_store = workspace_store
 
+from openagno.core.tenant_loader import TenantLoader
+
+_tenant_loader_max_size = int(os.getenv("OPENAGNO_TENANT_CACHE_SIZE", "32"))
+tenant_loader = TenantLoader(
+	workspace_store,
+	default_bundle=ws,
+	max_size=_tenant_loader_max_size,
+)
+base_app.state.tenant_loader = tenant_loader
+logger.info(f"TenantLoader activo (max_size={_tenant_loader_max_size}, default='default')")
+
 interfaces = []
 channels = config.get("channels", ["whatsapp"])
 
@@ -638,11 +672,11 @@ if "whatsapp" in channels:
 		interfaces.append(Whatsapp(agent=main_agent))
 		logger.info("WhatsApp Cloud API habilitado (API oficial Meta)")
 
-	# Modo 2: QR Link (via Baileys bridge)
+	# Modo 2: QR Link (via Baileys bridge multi-tenant)
 	if wa_mode in ("qr_link", "dual"):
 		bridge_url = wa_config.get("qr_link", {}).get("bridge_url", "http://localhost:3001")
-		_setup_whatsapp_qr_routes(base_app, main_agent, bridge_url)
-		logger.info(f"WhatsApp QR Link habilitado (bridge: {bridge_url})")
+		_setup_whatsapp_qr_routes(base_app, bridge_url)
+		logger.info(f"WhatsApp QR Link habilitado (bridge multi-tenant: {bridge_url})")
 
 if "slack" in channels:
 	from agno.os.interfaces.slack import Slack
@@ -711,7 +745,9 @@ if schedules:
 	logger.info(f"Schedules cargados: {[s['name'] for s in schedules]}")
 
 from routes.tenant_routes import create_tenant_router
-base_app.include_router(create_tenant_router(tenant_store, workspace_store, agents_by_id))
+base_app.include_router(
+	create_tenant_router(tenant_store, workspace_store, agents_by_id, tenant_loader=tenant_loader)
+)
 
 os_config = config.get("agentos", {})
 scheduler_cfg = config.get("scheduler", {})
@@ -794,9 +830,20 @@ async def admin_reload(request: Request):
 	return {"status": "reload_requested"}
 
 
+@base_app.post("/admin/tenants/{tenant_slug}/reload")
+@limiter.limit("30/minute")
+async def admin_tenant_reload(request: Request, tenant_slug: str):
+	"""Invalida la cache del tenant_loader para que se recargue en la proxima request."""
+	evicted = request.app.state.tenant_loader.reload(tenant_slug)
+	return {"status": "reloaded", "tenant_slug": tenant_slug, "evicted": evicted}
+
+
 @base_app.get("/admin/health")
 @limiter.limit("60/minute")
-async def admin_health(request: Request):
+async def admin_health(request: Request, tenant_slug: str | None = None):
+	"""Health check global. Si se pasa tenant_slug, incluye el modelo de ese tenant."""
+	from openagno.core.tenant import DEFAULT_TENANT, normalize_tenant_id
+
 	model_info = {**config.get("model", {})}
 	if fallback_model:
 		model_info["fallback_active"] = _using_fallback
@@ -806,6 +853,22 @@ async def admin_health(request: Request):
 			remaining = max(0, int(_fallback_until - time.time()))
 			model_info["fallback_restore_in_seconds"] = remaining
 	audio_info = config.get("audio", {})
+
+	tenant_model = None
+	resolved_tenant = None
+	if tenant_slug:
+		resolved_tenant = normalize_tenant_id(tenant_slug)
+		if resolved_tenant == DEFAULT_TENANT:
+			tenant_model = model_info
+		else:
+			try:
+				bundle = request.app.state.tenant_loader.get_or_load(resolved_tenant)
+				tenant_model = {**bundle["config"].get("model", {})}
+			except LookupError as exc:
+				tenant_model = {"error": f"workspace_missing: {exc}"}
+
+	loader_stats = request.app.state.tenant_loader.stats()
+
 	return {
 		"status": "healthy",
 		"version": __version__,
@@ -821,7 +884,10 @@ async def admin_health(request: Request):
 			"enabled": True,
 			"workspace_backend": workspace_store.backend,
 			"tenant_header": "X-Tenant-ID",
+			"cache": loader_stats,
 		},
+		"tenant_model": tenant_model if tenant_slug else None,
+		"tenant_slug": resolved_tenant,
 	}
 
 

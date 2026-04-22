@@ -1,4 +1,11 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion, downloadMediaMessage } = require('@whiskeysockets/baileys');
+const {
+	default: makeWASocket,
+	useMultiFileAuthState,
+	DisconnectReason,
+	Browsers,
+	fetchLatestBaileysVersion,
+	downloadMediaMessage,
+} = require('@whiskeysockets/baileys');
 const express = require('express');
 const QRCode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
@@ -7,9 +14,8 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
-// Evitar que errores no capturados maten el proceso
 process.on('unhandledRejection', (err) => {
 	console.error('Error no capturado (promise):', err?.message || err);
 });
@@ -18,267 +24,489 @@ process.on('uncaughtException', (err) => {
 });
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:8000';
-const SESSION_DIR = process.env.SESSION_DIR || './session';
-const PORT = process.env.BRIDGE_PORT || 3001;
+const SESSION_DIR = path.resolve(process.env.SESSION_DIR || './session');
+const PORT = Number(process.env.BRIDGE_PORT || 3001);
 const MAX_RETRIES = 5;
+const DEDUP_TTL_MS = 60_000;
+const DEFAULT_TENANT = 'default';
+const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
 
-let sock = null;
-let currentQR = null;
-let connectionStatus = 'disconnected';
-let retryCount = 0;
+/**
+ * Estado por tenant. Cada slug tiene su propia sesion Baileys aislada.
+ * Map<string, SessionState>
+ */
+const sessions = new Map();
 
-// DAT-247: Deduplicacion de mensajes para evitar ghost messages
-const processedMessages = new Map();
-const DEDUP_TTL_MS = 60000; // 60 segundos
+/**
+ * Crea el estado inicial de una sesion.
+ */
+function createSessionState(slug) {
+	return {
+		slug,
+		sock: null,
+		currentQR: null,
+		status: 'disconnected',
+		retries: 0,
+		processed: new Map(),
+		connecting: false,
+	};
+}
 
-function isProcessed(msgId) {
-	if (processedMessages.has(msgId)) return true;
-	processedMessages.set(msgId, Date.now());
-	// Limpiar entradas expiradas
-	if (processedMessages.size > 500) {
+function isValidSlug(raw) {
+	if (typeof raw !== 'string') return false;
+	const s = raw.toLowerCase();
+	return SLUG_REGEX.test(s);
+}
+
+function normalizeSlug(raw) {
+	if (!isValidSlug(raw)) return null;
+	return raw.toLowerCase();
+}
+
+function sessionDirFor(slug) {
+	return path.join(SESSION_DIR, slug);
+}
+
+function hasPersistedCreds(slug) {
+	return fs.existsSync(path.join(sessionDirFor(slug), 'creds.json'));
+}
+
+/**
+ * Migra la estructura vieja (SESSION_DIR/*.json) a la nueva (SESSION_DIR/default/*.json)
+ * Solo ocurre una vez al arrancar la nueva version del bridge.
+ */
+function migrateLegacySessionLayout() {
+	if (!fs.existsSync(SESSION_DIR)) {
+		fs.mkdirSync(SESSION_DIR, { recursive: true });
+		return;
+	}
+	const credsPath = path.join(SESSION_DIR, 'creds.json');
+	if (!fs.existsSync(credsPath)) return;
+
+	const targetDir = sessionDirFor(DEFAULT_TENANT);
+	console.log(`Migrando sesion legacy a ${targetDir} (tenant "${DEFAULT_TENANT}")`);
+	fs.mkdirSync(targetDir, { recursive: true });
+
+	for (const entry of fs.readdirSync(SESSION_DIR)) {
+		const full = path.join(SESSION_DIR, entry);
+		const stat = fs.statSync(full);
+		if (stat.isFile()) {
+			fs.renameSync(full, path.join(targetDir, entry));
+		}
+	}
+	console.log('Migracion completada.');
+}
+
+function isProcessed(session, msgId) {
+	if (!msgId) return false;
+	if (session.processed.has(msgId)) return true;
+	session.processed.set(msgId, Date.now());
+	if (session.processed.size > 500) {
 		const now = Date.now();
-		for (const [id, ts] of processedMessages) {
-			if (now - ts > DEDUP_TTL_MS) processedMessages.delete(id);
+		for (const [id, ts] of session.processed) {
+			if (now - ts > DEDUP_TTL_MS) session.processed.delete(id);
 		}
 	}
 	return false;
 }
 
-/**
- * Elimina el directorio de sesion para forzar nueva vinculacion QR.
- */
-function clearSession() {
-	const sessionPath = path.resolve(SESSION_DIR);
-	if (fs.existsSync(sessionPath)) {
-		fs.rmSync(sessionPath, { recursive: true, force: true });
-		console.log('Sesion eliminada — se generara nuevo QR al reconectar.');
+function clearSessionDir(slug) {
+	const dir = sessionDirFor(slug);
+	if (fs.existsSync(dir)) {
+		fs.rmSync(dir, { recursive: true, force: true });
 	}
 }
 
-async function connectWhatsApp() {
-	if (retryCount >= MAX_RETRIES) {
-		console.log(`Maximo de reintentos (${MAX_RETRIES}) alcanzado. Reinicia el bridge manualmente.`);
-		connectionStatus = 'max_retries';
-		return;
+/**
+ * Inicia o reinicia la conexion Baileys para un tenant.
+ * Idempotente: si ya esta conectado, solo garantiza el estado y retorna.
+ */
+async function connectTenant(slug) {
+	let session = sessions.get(slug);
+	if (!session) {
+		session = createSessionState(slug);
+		sessions.set(slug, session);
+	}
+	if (session.connecting) return session;
+	if (session.sock && session.status === 'connected') return session;
+
+	if (session.retries >= MAX_RETRIES) {
+		console.log(`[${slug}] Maximo de reintentos (${MAX_RETRIES}). Se requiere accion manual.`);
+		session.status = 'max_retries';
+		return session;
 	}
 
-	const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-	const { version, isLatest } = await fetchLatestBaileysVersion();
-	console.log(`Iniciando Baileys con version WA: ${version.join('.')} (isLatest: ${isLatest})`);
+	session.connecting = true;
+	try {
+		const { state, saveCreds } = await useMultiFileAuthState(sessionDirFor(slug));
+		const { version } = await fetchLatestBaileysVersion();
+		console.log(`[${slug}] Iniciando Baileys version WA ${version.join('.')}`);
 
-	sock = makeWASocket({
-		version,
-		auth: state,
-		browser: Browsers.ubuntu('Chrome'),
-		logger: logger,
-	});
+		const sock = makeWASocket({
+			version,
+			auth: state,
+			browser: Browsers.ubuntu('Chrome'),
+			logger,
+		});
+		session.sock = sock;
 
-	sock.ev.on('creds.update', saveCreds);
+		sock.ev.on('creds.update', saveCreds);
 
-	sock.ev.on('connection.update', (update) => {
-		const { connection, lastDisconnect, qr } = update;
+		sock.ev.on('connection.update', (update) => {
+			const { connection, lastDisconnect, qr } = update;
 
-		if (qr) {
-			currentQR = qr;
-			connectionStatus = 'waiting_qr';
-			retryCount = 0;
-
-			// Renderizar QR grande en la terminal para escanear directamente
-			console.log('\n' + '='.repeat(60));
-			console.log('  ESCANEA ESTE CODIGO QR DESDE WHATSAPP');
-			console.log('  WhatsApp > Configuracion > Dispositivos vinculados');
-			console.log('='.repeat(60) + '\n');
-			qrcodeTerminal.generate(qr, { small: false }, (qrAscii) => {
-				console.log(qrAscii);
-				console.log('\n' + '='.repeat(60));
-				console.log('  Tambien disponible en: http://localhost:' + PORT + '/qr/image');
-				console.log('='.repeat(60) + '\n');
-			});
-		}
-
-		if (connection === 'open') {
-			currentQR = null;
-			connectionStatus = 'connected';
-			retryCount = 0;
-			console.log('WhatsApp conectado via QR');
-		}
-
-		if (connection === 'close') {
-			const statusCode = lastDisconnect?.error?.output?.statusCode;
-			const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-			connectionStatus = 'disconnected';
-
-			if (shouldReconnect) {
-				retryCount++;
-				const delay = Math.min(retryCount * 2000, 10000);
-				console.log(`Reconectando en ${delay / 1000}s (intento ${retryCount}/${MAX_RETRIES})...`);
-				setTimeout(connectWhatsApp, delay);
-			} else {
-				console.log('Sesion cerrada (loggedOut). Limpiando sesion y regenerando QR...');
-				connectionStatus = 'logged_out';
-				// Auto-limpiar sesion y reconectar para generar nuevo QR
-				clearSession();
-				retryCount = 0;
-				setTimeout(connectWhatsApp, 2000);
-			}
-		}
-	});
-
-	sock.ev.on('messages.upsert', async (upsert) => {
-		// DAT-247: Solo procesar mensajes nuevos (notify), ignorar historial (append)
-		if (upsert.type && upsert.type !== 'notify') return;
-
-		const messages = upsert.messages || upsert;
-		const msgArray = Array.isArray(messages) ? messages : [messages];
-
-		for (const msg of msgArray) {
-			if (!msg.message) continue;
-			if (msg.key.fromMe) continue;
-			if (msg.key.remoteJid === 'status@broadcast') continue;
-
-			// DAT-247: Deduplicacion por message_id
-			if (isProcessed(msg.key.id)) {
-				console.log(`  (omitido: mensaje duplicado ${msg.key.id})`);
-				continue;
+			if (qr) {
+				session.currentQR = qr;
+				session.status = 'waiting_qr';
+				session.retries = 0;
+				console.log(`\n[${slug}] ESCANEA ESTE QR (WhatsApp > Dispositivos vinculados)`);
+				qrcodeTerminal.generate(qr, { small: true }, (qrAscii) => {
+					console.log(qrAscii);
+				});
 			}
 
-			const jid = msg.key.remoteJid;
-			let normalizedMessage = msg.message?.ephemeralMessage?.message
-				|| msg.message?.viewOnceMessage?.message
-				|| msg.message?.viewOnceMessageV2?.message
-				|| msg.message?.documentWithCaptionMessage?.message
-				|| msg.message;
-
-			// DAT-247: Filtrar mensajes de protocolo y reacciones
-			if (normalizedMessage?.protocolMessage
-				|| normalizedMessage?.reactionMessage
-				|| normalizedMessage?.editedMessage
-				|| normalizedMessage?.pollCreationMessage
-				|| normalizedMessage?.pollUpdateMessage
-				|| normalizedMessage?.stickerMessage) {
-				continue;
+			if (connection === 'open') {
+				session.currentQR = null;
+				session.status = 'connected';
+				session.retries = 0;
+				console.log(`[${slug}] WhatsApp conectado`);
 			}
 
-			let text = normalizedMessage?.conversation
-				|| normalizedMessage?.extendedTextMessage?.text
-				|| normalizedMessage?.imageMessage?.caption
-				|| normalizedMessage?.videoMessage?.caption
-				|| '';
+			if (connection === 'close') {
+				const statusCode = lastDisconnect?.error?.output?.statusCode;
+				const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+				session.status = 'disconnected';
+				session.sock = null;
 
-			let mediaData = null;
-			let mimeType = null;
-			let msgType = 'text';
-
-			if (normalizedMessage?.audioMessage) {
-				msgType = 'audio';
-				mimeType = normalizedMessage.audioMessage.mimetype;
-			} else if (normalizedMessage?.imageMessage) {
-				msgType = 'image';
-				mimeType = normalizedMessage.imageMessage.mimetype;
-			} else if (normalizedMessage?.documentMessage) {
-				msgType = 'document';
-				mimeType = normalizedMessage.documentMessage.mimetype;
-			}
-
-			if (!text && msgType === 'text') {
-				console.log(`  (omitido: mensaje sin texto ni media soportada)`);
-				continue;
-			}
-
-			// Descargar media si existe
-			if (msgType !== 'text') {
-				try {
-					console.log(`  Descargando media tipo ${msgType}...`);
-					const buffer = await downloadMediaMessage(
-						msg,
-						'buffer',
-						{},
-						{ logger }
-					);
-					mediaData = buffer.toString('base64');
-					if (!text) text = `[Mensaje de ${msgType} recibido]`;
-				} catch (err) {
-					console.error(`Error descargando media:`, err.message);
-					continue;
+				if (shouldReconnect) {
+					session.retries += 1;
+					const delay = Math.min(session.retries * 2000, 10_000);
+					console.log(`[${slug}] Reconectando en ${delay / 1000}s (intento ${session.retries}/${MAX_RETRIES})`);
+					setTimeout(() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)), delay);
+				} else {
+					console.log(`[${slug}] Sesion cerrada (loggedOut). Limpiando y regenerando QR...`);
+					session.status = 'logged_out';
+					clearSessionDir(slug);
+					session.retries = 0;
+					setTimeout(() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion tras logout fallo:`, e)), 2000);
 				}
 			}
+		});
 
-			console.log(`Mensaje de ${jid}: "${text.substring(0, 80)}" ${msgType !== 'text' ? '(con media)' : ''}`);
+		sock.ev.on('messages.upsert', async (upsert) => {
+			if (upsert.type && upsert.type !== 'notify') return;
 
-			try {
-				const resp = await fetch(`${GATEWAY_URL}/whatsapp-qr/incoming`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						from: jid,
-						text: text,
-						type: msgType,
-						mimeType: mimeType,
-						media: mediaData,
-						message_id: msg.key.id,
-						timestamp: msg.messageTimestamp,
-					}),
-				});
-				const result = await resp.json();
-				console.log(`  -> Gateway: ${JSON.stringify(result)}`);
-			} catch (err) {
-				console.error(`  -> Error reenviando: ${err.message}`);
+			const messages = upsert.messages || upsert;
+			const msgArray = Array.isArray(messages) ? messages : [messages];
+
+			for (const msg of msgArray) {
+				if (!msg.message) continue;
+				if (msg.key.fromMe) continue;
+				if (msg.key.remoteJid === 'status@broadcast') continue;
+
+				if (isProcessed(session, msg.key.id)) {
+					console.log(`[${slug}] (omitido: mensaje duplicado ${msg.key.id})`);
+					continue;
+				}
+
+				const jid = msg.key.remoteJid;
+				const normalized =
+					msg.message?.ephemeralMessage?.message ||
+					msg.message?.viewOnceMessage?.message ||
+					msg.message?.viewOnceMessageV2?.message ||
+					msg.message?.documentWithCaptionMessage?.message ||
+					msg.message;
+
+				if (
+					normalized?.protocolMessage ||
+					normalized?.reactionMessage ||
+					normalized?.editedMessage ||
+					normalized?.pollCreationMessage ||
+					normalized?.pollUpdateMessage ||
+					normalized?.stickerMessage
+				) {
+					continue;
+				}
+
+				let text =
+					normalized?.conversation ||
+					normalized?.extendedTextMessage?.text ||
+					normalized?.imageMessage?.caption ||
+					normalized?.videoMessage?.caption ||
+					'';
+
+				let mediaData = null;
+				let mimeType = null;
+				let msgType = 'text';
+
+				if (normalized?.audioMessage) {
+					msgType = 'audio';
+					mimeType = normalized.audioMessage.mimetype;
+				} else if (normalized?.imageMessage) {
+					msgType = 'image';
+					mimeType = normalized.imageMessage.mimetype;
+				} else if (normalized?.documentMessage) {
+					msgType = 'document';
+					mimeType = normalized.documentMessage.mimetype;
+				}
+
+				if (!text && msgType === 'text') {
+					console.log(`[${slug}] (omitido: mensaje sin texto ni media soportada)`);
+					continue;
+				}
+
+				if (msgType !== 'text') {
+					try {
+						console.log(`[${slug}] Descargando media tipo ${msgType}...`);
+						const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger });
+						mediaData = buffer.toString('base64');
+						if (!text) text = `[Mensaje de ${msgType} recibido]`;
+					} catch (err) {
+						console.error(`[${slug}] Error descargando media:`, err.message);
+						continue;
+					}
+				}
+
+				console.log(`[${slug}] Mensaje de ${jid}: "${text.substring(0, 80)}" ${msgType !== 'text' ? '(media)' : ''}`);
+
+				try {
+					const resp = await fetch(`${GATEWAY_URL}/whatsapp-qr/incoming`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Tenant-ID': slug,
+						},
+						body: JSON.stringify({
+							tenant_slug: slug,
+							from: jid,
+							text,
+							type: msgType,
+							mimeType,
+							media: mediaData,
+							message_id: msg.key.id,
+							timestamp: msg.messageTimestamp,
+						}),
+					});
+					const result = await resp.json();
+					console.log(`[${slug}] -> Gateway: ${JSON.stringify(result)}`);
+				} catch (err) {
+					console.error(`[${slug}] -> Error reenviando: ${err.message}`);
+				}
 			}
-		}
-	});
+		});
+	} finally {
+		session.connecting = false;
+	}
+	return session;
 }
 
-app.get('/status', (req, res) => {
-	res.json({ status: connectionStatus, has_qr: !!currentQR, retries: retryCount });
+function describeSession(session) {
+	return {
+		tenant_slug: session.slug,
+		status: session.status,
+		has_qr: Boolean(session.currentQR),
+		retries: session.retries,
+	};
+}
+
+function ensureSessionOr404(req, res) {
+	const slug = normalizeSlug(req.params.tenantSlug);
+	if (!slug) {
+		res.status(400).json({ error: 'invalid_tenant_slug' });
+		return null;
+	}
+	let session = sessions.get(slug);
+	if (!session) {
+		session = createSessionState(slug);
+		sessions.set(slug, session);
+	}
+	return { slug, session };
+}
+
+// ===== Endpoints por tenant (API nueva) =====
+
+app.get('/sessions', (_req, res) => {
+	const list = Array.from(sessions.values()).map(describeSession);
+	res.json({ sessions: list, count: list.length });
 });
 
-app.get('/qr', async (req, res) => {
-	if (!currentQR) {
-		return res.json({ status: connectionStatus, qr: null });
+app.post('/sessions/:tenantSlug', async (req, res) => {
+	const slug = normalizeSlug(req.params.tenantSlug);
+	if (!slug) return res.status(400).json({ error: 'invalid_tenant_slug' });
+	try {
+		const session = await connectTenant(slug);
+		return res.json(describeSession(session));
+	} catch (err) {
+		return res.status(500).json({ error: err?.message || 'connect_failed' });
 	}
-	const qrDataUrl = await QRCode.toDataURL(currentQR);
+});
+
+app.get('/sessions/:tenantSlug/status', (req, res) => {
+	const ctx = ensureSessionOr404(req, res);
+	if (!ctx) return;
+	res.json(describeSession(ctx.session));
+});
+
+app.get('/sessions/:tenantSlug/qr', async (req, res) => {
+	const ctx = ensureSessionOr404(req, res);
+	if (!ctx) return;
+	const { session } = ctx;
+	if (!session.currentQR) {
+		return res.json({ status: session.status, qr: null });
+	}
+	const qrDataUrl = await QRCode.toDataURL(session.currentQR);
 	res.json({ status: 'waiting_qr', qr: qrDataUrl });
 });
 
-app.get('/qr/image', async (req, res) => {
-	if (!currentQR) {
-		return res.status(404).json({ error: 'QR no disponible', status: connectionStatus });
+app.get('/sessions/:tenantSlug/qr/image', async (req, res) => {
+	const ctx = ensureSessionOr404(req, res);
+	if (!ctx) return;
+	const { session } = ctx;
+	if (!session.currentQR) {
+		return res.status(404).json({ error: 'no_qr_available', status: session.status });
 	}
-	const qrBuffer = await QRCode.toBuffer(currentQR, { width: 300, margin: 2 });
+	const qrBuffer = await QRCode.toBuffer(session.currentQR, { width: 300, margin: 2 });
 	res.type('image/png').send(qrBuffer);
 });
 
-app.post('/send', async (req, res) => {
-	const { to, text } = req.body;
-	if (!sock || connectionStatus !== 'connected') {
-		return res.status(503).json({ error: 'WhatsApp no conectado' });
+app.post('/sessions/:tenantSlug/send', async (req, res) => {
+	const ctx = ensureSessionOr404(req, res);
+	if (!ctx) return;
+	const { slug, session } = ctx;
+	const { to, text } = req.body || {};
+	if (!to || typeof text !== 'string') {
+		return res.status(400).json({ error: 'missing_fields' });
+	}
+	if (!session.sock || session.status !== 'connected') {
+		return res.status(503).json({ error: 'whatsapp_not_connected', status: session.status });
 	}
 	try {
-		// Si el JID ya contiene @ (formato completo), usarlo directo
 		const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
-		await sock.sendMessage(jid, { text });
-		console.log(`Respuesta enviada a ${jid}: "${text.substring(0, 50)}..."`);
+		await session.sock.sendMessage(jid, { text });
+		console.log(`[${slug}] Respuesta enviada a ${jid}: "${text.substring(0, 50)}..."`);
 		res.json({ status: 'sent' });
 	} catch (err) {
-		console.error(`Error enviando a ${to}: ${err.message}`);
+		console.error(`[${slug}] Error enviando a ${to}: ${err.message}`);
 		res.status(500).json({ error: err.message });
 	}
 });
 
-app.post('/restart', (req, res) => {
-	retryCount = 0;
-	connectionStatus = 'disconnected';
-	if (sock) {
-		try { sock.end(); } catch (e) { /* ignore */ }
+app.post('/sessions/:tenantSlug/restart', async (req, res) => {
+	const ctx = ensureSessionOr404(req, res);
+	if (!ctx) return;
+	const { slug, session } = ctx;
+	session.retries = 0;
+	session.status = 'disconnected';
+	if (session.sock) {
+		try { session.sock.end(); } catch { /* ignore */ }
 	}
-	clearSession();
-	connectWhatsApp();
-	res.json({ status: 'restarting' });
+	clearSessionDir(slug);
+	try {
+		await connectTenant(slug);
+		res.json({ status: 'restarting', ...describeSession(session) });
+	} catch (err) {
+		res.status(500).json({ error: err?.message || 'restart_failed' });
+	}
 });
 
-app.listen(PORT, () => {
-	console.log(`WhatsApp QR Bridge en puerto ${PORT}`);
-	connectWhatsApp();
+app.delete('/sessions/:tenantSlug', async (req, res) => {
+	const slug = normalizeSlug(req.params.tenantSlug);
+	if (!slug) return res.status(400).json({ error: 'invalid_tenant_slug' });
+	const session = sessions.get(slug);
+	if (session?.sock) {
+		try { await session.sock.logout(); } catch { /* ignore */ }
+		try { session.sock.end(); } catch { /* ignore */ }
+	}
+	sessions.delete(slug);
+	clearSessionDir(slug);
+	res.json({ status: 'deleted', tenant_slug: slug });
 });
+
+// ===== Endpoints legacy (retrocompatibilidad con el tenant operador "default") =====
+
+app.get('/status', (_req, res) => {
+	const session = sessions.get(DEFAULT_TENANT) || createSessionState(DEFAULT_TENANT);
+	res.json({ status: session.status, has_qr: Boolean(session.currentQR), retries: session.retries });
+});
+
+app.get('/qr', async (_req, res) => {
+	const session = sessions.get(DEFAULT_TENANT);
+	if (!session || !session.currentQR) {
+		return res.json({ status: session?.status || 'disconnected', qr: null });
+	}
+	const qrDataUrl = await QRCode.toDataURL(session.currentQR);
+	res.json({ status: 'waiting_qr', qr: qrDataUrl });
+});
+
+app.get('/qr/image', async (_req, res) => {
+	const session = sessions.get(DEFAULT_TENANT);
+	if (!session || !session.currentQR) {
+		return res.status(404).json({ error: 'QR no disponible', status: session?.status || 'disconnected' });
+	}
+	const qrBuffer = await QRCode.toBuffer(session.currentQR, { width: 300, margin: 2 });
+	res.type('image/png').send(qrBuffer);
+});
+
+app.post('/send', async (req, res) => {
+	const session = sessions.get(DEFAULT_TENANT);
+	const { to, text } = req.body || {};
+	if (!session?.sock || session.status !== 'connected') {
+		return res.status(503).json({ error: 'WhatsApp no conectado' });
+	}
+	try {
+		const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+		await session.sock.sendMessage(jid, { text });
+		res.json({ status: 'sent' });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+
+app.post('/restart', async (_req, res) => {
+	const session = sessions.get(DEFAULT_TENANT) || createSessionState(DEFAULT_TENANT);
+	sessions.set(DEFAULT_TENANT, session);
+	session.retries = 0;
+	session.status = 'disconnected';
+	if (session.sock) {
+		try { session.sock.end(); } catch { /* ignore */ }
+	}
+	clearSessionDir(DEFAULT_TENANT);
+	try {
+		await connectTenant(DEFAULT_TENANT);
+		res.json({ status: 'restarting' });
+	} catch (err) {
+		res.status(500).json({ error: err?.message || 'restart_failed' });
+	}
+});
+
+// ===== Bootstrap =====
+
+async function bootstrap() {
+	migrateLegacySessionLayout();
+
+	const persistedSlugs = [];
+	if (fs.existsSync(SESSION_DIR)) {
+		for (const entry of fs.readdirSync(SESSION_DIR, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const slug = normalizeSlug(entry.name);
+			if (!slug) continue;
+			if (hasPersistedCreds(slug)) persistedSlugs.push(slug);
+		}
+	}
+
+	// Siempre preparamos "default" aunque no tenga creds: sera el QR del operador
+	if (!persistedSlugs.includes(DEFAULT_TENANT)) persistedSlugs.unshift(DEFAULT_TENANT);
+
+	for (const slug of persistedSlugs) {
+		connectTenant(slug).catch((err) => console.error(`[${slug}] bootstrap fallo:`, err));
+	}
+
+	app.listen(PORT, () => {
+		console.log(`WhatsApp QR Bridge multi-tenant en puerto ${PORT}`);
+		console.log(`Sesiones a restaurar: ${persistedSlugs.join(', ') || '(ninguna)'}`);
+	});
+}
+
+bootstrap();

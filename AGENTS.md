@@ -41,9 +41,11 @@ If a task appears to require changes in both repos, do not silently edit both. K
 - `loader.py`: loads `workspace/` and builds the runtime
 - `openagno/cli.py`: CLI bootstrap
 - `openagno/commands/`: packaged CLI commands such as `init`, `start`, `templates`, and `validate`
-- `openagno/core/workspace_store.py`: tenant workspace provisioning and storage rules
+- `openagno/core/workspace_store.py`: tenant workspace provisioning and storage rules (also derrama `instructions.md` y `self_knowledge.md` a disco cuando el config los incluye)
 - `openagno/core/tenant.py` and `openagno/core/tenant_middleware.py`: tenant runtime behavior
-- `routes/tenant_routes.py`: tenant CRUD and workspace routes
+- `openagno/core/tenant_loader.py`: cache LRU de workspaces por tenant que resuelve el agente correcto en cada request sin reiniciar el proceso
+- `routes/tenant_routes.py`: tenant CRUD, workspace, `/runs` y `/reload`
+- `bridges/whatsapp-qr/index.js`: bridge Baileys multi-sesion; una sesion por tenant bajo `/sessions/:tenantSlug/*`
 - `routes/knowledge_routes.py`: OSS knowledge upload, list, delete, and search routes
 - `management/`: runtime admin and validation helpers
 - `workspace/`: canonical checked in workspace content
@@ -91,7 +93,8 @@ Minimum expectations:
 
 OpenAgnoCloud may call this repo over HTTP only. The current SaaS facing contract includes:
 
-- `GET /admin/health`
+- `GET /admin/health` (acepta `?tenant_slug=<slug>` y devuelve `tenant_model` + `tenancy.cache`)
+- `POST /admin/tenants/{tenant_slug}/reload`
 - `GET /tenants`
 - `POST /tenants`
 - `GET /tenants/{tenant_id}`
@@ -99,6 +102,16 @@ OpenAgnoCloud may call this repo over HTTP only. The current SaaS facing contrac
 - `DELETE /tenants/{tenant_id}`
 - `GET /tenants/{tenant_id}/workspace`
 - `PUT /tenants/{tenant_id}/workspace`
+- `POST /tenants/{tenant_id}/reload`
+- `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
+- `POST /whatsapp-qr/incoming` (acepta `tenant_slug` en el body)
+
+Puntos clave del runtime multi-tenant (Fase A):
+
+- `loader.load_workspace_from_dir(path)` permite cargar cualquier workspace sin depender de `WORKSPACE_DIR` global. La funcion legacy `load_workspace()` es un wrapper que pasa `WORKSPACE_DIR`.
+- `tenant_loader.TenantLoader` mantiene un cache LRU (`OPENAGNO_TENANT_CACHE_SIZE`, default 32) con los bundles por tenant. El gateway inyecta el bundle global como tenant `default` para no duplicar el agente del operador.
+- Tras cualquier `PUT /tenants/{id}/workspace` Cloud debe llamar a `POST /tenants/{id}/reload` para invalidar el cache del tenant.
+- El bridge WhatsApp QR tiene una sesion aislada por tenant. `POST /whatsapp-qr/incoming` recibe `tenant_slug` y el gateway selecciona el agente correcto; el tenant `default` conserva el wrapper STT/TTS/Fallback del operador.
 
 Do not widen that contract casually in 10.5. In particular:
 
