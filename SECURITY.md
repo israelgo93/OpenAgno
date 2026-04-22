@@ -24,7 +24,7 @@ We will acknowledge receipt within 72 hours and follow up with remediation guida
 ## Secrets and credentials
 
 - Keep all secrets out of version control. `.env` is gitignored; use `.env.example` for the shape only.
-- WhatsApp Cloud API multi-tenant credentials (Access Token, Verify Token, App Secret) are stored AES-256-GCM encrypted in Supabase. The master key (`CHANNEL_SECRETS_KEY`) is a 32-byte value shared between OpenAgno OSS and OpenAgnoCloud. Do not check it in, do not log it, and rotate it only as part of a coordinated re-encryption of existing rows.
+- WhatsApp Cloud API multi-tenant credentials (Access Token, Verify Token, App Secret) are stored AES-256-GCM encrypted in Supabase. The master key (`CHANNEL_SECRETS_KEY`) is a 32-byte value that must be shared between the runtime and any external system that writes encrypted credentials to the `whatsapp_cloud_channels` table. Do not check it in, do not log it, and rotate it only as part of a coordinated re-encryption of existing rows.
 - `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` exists for local development only. Never set it in production.
 - API keys (`OPENAGNO_API_KEY`) should be generated with `openssl rand -hex 32` and kept unique per deployment.
 

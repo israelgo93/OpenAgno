@@ -24,17 +24,16 @@ The repository follows [`agents.md`](https://agents.md), a de-facto standard ado
 Where the file lives:
 
 - `AGENTS.md` in the repo root of `OpenAgno` (this repo)
-- `AGENTS.md` in the repo root of `OpenAgnoCloud`
 
 What it contains:
 
-- Scope of the repository and the sibling boundary
+- Scope of the repository and its public HTTP contract boundary
 - Current baseline (version, Agno floor, Python, Node)
 - Prerequisites to run the project
 - Setup commands
 - Repository map
 - Validation commands and expectations per change type
-- Runtime contract with OpenAgnoCloud (and vice versa)
+- Public HTTP contract that external systems consume
 - Security and safety rules
 - Agent workflow checklist
 
@@ -48,7 +47,6 @@ This repo ships:
 - `.agents/skills/openagno-channels/SKILL.md` &mdash; WhatsApp Cloud API (single-tenant and multi-tenant), WhatsApp QR (Baileys bridge), Slack, Telegram, AG-UI, A2A. Includes Meta Developer Console setup and debugging tips.
 - `.agents/skills/mintlify/SKILL.md` &mdash; best practices for writing and maintaining the documentation site.
 
-The Cloud repo ships `.agents/skills/openagno-cloud/SKILL.md` with its own Next.js + Supabase + Stripe playbook.
 
 ## Per-IDE setup
 

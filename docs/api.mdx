@@ -61,7 +61,7 @@ Single-tenant (operator-managed via env vars):
 | `GET` | `/whatsapp/webhook` | Meta webhook verification |
 | `POST` | `/whatsapp/webhook` | WhatsApp Cloud API events |
 
-Multi-tenant (each tenant has its own credentials encrypted in Supabase). Requires `CHANNEL_SECRETS_KEY` shared with OpenAgnoCloud:
+Multi-tenant (each tenant has its own credentials encrypted in Supabase). Requires `CHANNEL_SECRETS_KEY` to be shared between the runtime and whichever external system populates the `whatsapp_cloud_channels` table:
 
 | Method | Path | Description |
 |--------|------|-------------|

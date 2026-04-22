@@ -56,7 +56,7 @@ body:
       options:
         - Not channel-related
         - WhatsApp Cloud API (single-tenant)
-        - WhatsApp Cloud API (multi-tenant / OpenAgnoCloud)
+        - WhatsApp Cloud API (multi-tenant, per-tenant webhook)
         - WhatsApp QR (Baileys bridge)
         - Slack
         - Telegram

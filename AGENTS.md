@@ -4,7 +4,7 @@ This file follows the [`AGENTS.md` convention](https://agents.md) so any agent-c
 
 ## Scope
 
-This repository is `OpenAgno`, the **open source agent runtime and CLI**. It pairs with the sibling SaaS repo `../OpenAgnoCloud`. Keep work scoped to this repo unless the user explicitly asks for coordinated multi-repo changes.
+This repository is `OpenAgno`, an **open source agent runtime and CLI** built on top of Agno. It is fully self-contained: you can install it from PyPI, run it locally, and deploy it to your own infrastructure without depending on any hosted service.
 
 OpenAgno owns:
 
@@ -18,13 +18,7 @@ OpenAgno owns:
 - public Mintlify docs in `docs/` (English and `docs/es/`)
 - CLI-facing skills for agent-capable IDEs in `.agents/skills/`
 
-It does **not** own:
-
-- the SaaS dashboard, onboarding UI, or operator portal (those live in `OpenAgnoCloud`)
-- Supabase control-plane state beyond the tables the runtime reads
-- Stripe billing
-- Next.js product UI
-- AWS hosting for Cloud
+The runtime exposes a documented HTTP contract (`/admin/*`, `/tenants/*`, `/knowledge/*`, channel webhooks) that any external control plane, dashboard, or orchestrator can consume. OpenAgno itself does not ship a customer-facing dashboard, billing flows, or hosted deployment tooling; those concerns belong to whatever product or service is built on top of this runtime.
 
 ## Current baseline
 
@@ -47,7 +41,7 @@ Minimum to run the CLI and the runtime:
 Platform-specific extras:
 
 - WhatsApp Cloud API single-tenant: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, optional `WHATSAPP_APP_SECRET`
-- WhatsApp Cloud API multi-tenant (OpenAgnoCloud): `CHANNEL_SECRETS_KEY` (32 bytes base64, identical to the key set in the Cloud Next.js app)
+- WhatsApp Cloud API multi-tenant: `CHANNEL_SECRETS_KEY` (32 bytes base64, shared with whatever external system writes the encrypted credentials to the `whatsapp_cloud_channels` table)
 - Slack: `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`
 - Telegram: `TELEGRAM_TOKEN`
 
@@ -122,9 +116,9 @@ Minimum expectations by change type:
 - Prefer backward-compatible changes to CLI, runtime routes, and workspace YAML shape.
 - If a version or packaging change is made, keep `openagno/__init__.py`, `pyproject.toml`, and `docs/changelog.mdx` in sync.
 
-## Runtime contract consumed by OpenAgnoCloud
+## Public runtime contract
 
-Cloud may call this runtime over HTTP only, using the documented surface:
+Any external control plane, dashboard, or orchestrator integrates with this runtime strictly over HTTP, using the documented surface:
 
 - `GET /admin/health` (accepts `?tenant_slug=<slug>`; returns `tenant_model` and `tenancy.cache`)
 - `POST /admin/reload`
@@ -137,11 +131,11 @@ Cloud may call this runtime over HTTP only, using the documented surface:
 - `POST /whatsapp-qr/incoming` (Baileys bridge hands off inbound messages; body carries `tenant_slug`)
 - `GET/POST /whatsapp-cloud/{tenant_id}/webhook` (per-tenant Meta webhook; requires `CHANNEL_SECRETS_KEY` to be set so the runtime can decrypt credentials from `public.whatsapp_cloud_channels`)
 
-Multi-tenant runtime notes (Phase A complete):
+Multi-tenant runtime notes:
 
 - `loader.load_workspace_from_dir(path)` lets the runtime load any workspace without relying on a global `WORKSPACE_DIR`. The legacy `load_workspace()` passes `WORKSPACE_DIR` automatically
 - `TenantLoader` keeps an LRU cache (`OPENAGNO_TENANT_CACHE_SIZE`, default 32). The gateway pre-populates it with the default workspace as tenant `default`
-- After every `PUT /tenants/{id}/workspace`, Cloud must `POST /tenants/{id}/reload` to invalidate the cache
+- After every `PUT /tenants/{id}/workspace`, the caller must `POST /tenants/{id}/reload` to invalidate the cache
 - The Baileys bridge isolates one session per tenant under `/sessions/:tenantSlug/*`; inbound messages go to `POST /whatsapp-qr/incoming` with `tenant_slug` in the body
 - Multi-tenant Cloud API resolves credentials from `public.whatsapp_cloud_channels` (AES-256-GCM cipher + nonce columns) using `CHANNEL_SECRETS_KEY`. See `openagno/channels/whatsapp_cloud.py`
 
@@ -154,9 +148,9 @@ BYOK (bring your own key) per tenant:
 
 Do not widen this contract casually. In particular:
 
-- do not assume Cloud may call `/knowledge/*`
-- do not add Supabase or Stripe logic in this repo
-- do not add Next.js app concerns here
+- do not add billing, subscription, or SaaS-specific logic to this repo
+- do not bake in hard dependencies on any particular hosted service or vendor-specific UI
+- keep the runtime usable standalone (someone should be able to `pip install openagno` and run it without any external control plane)
 
 ## Security and safety
 
@@ -164,7 +158,7 @@ Do not widen this contract casually. In particular:
 - Preserve API-key protection on admin and tenant routes unless the user explicitly requests an auth change
 - `WHATSAPP_SKIP_SIGNATURE_VALIDATION=true` exists for local development only; never set it in production
 - Avoid destructive tenant or workspace cleanup unless the user clearly asked for it
-- Multi-tenant Cloud API credentials (`access_token`, `verify_token`, `app_secret`) are AES-256-GCM encrypted in Supabase. The shared master key `CHANNEL_SECRETS_KEY` must be identical to the value set in the Cloud Next.js app, and rotating it requires re-encrypting existing rows
+- Multi-tenant Cloud API credentials (`access_token`, `verify_token`, `app_secret`) are AES-256-GCM encrypted in Supabase. The master key `CHANNEL_SECRETS_KEY` must be shared with whatever system populates the table; rotating it requires re-encrypting existing rows
 
 ## Agent workflow
 
@@ -174,7 +168,7 @@ Do not widen this contract casually. In particular:
 4. Add or update tests when behavior changes
 5. Update docs (English + Spanish) when a user-visible surface changes
 6. Before finishing, run the relevant validation commands and report any gaps
-7. If a task requires changes in both `OpenAgno` and `OpenAgnoCloud`, make them as separate repo-scoped changes and separate commits
+7. If a task requires coordinated changes in an external system consuming this runtime, keep the OpenAgno change self-contained and clearly document any contract impact
 
 ## IDE and agent integration
 
@@ -185,3 +179,7 @@ Do not widen this contract casually. In particular:
 - `llms-full.txt`: `https://docs.openagno.com/llms-full.txt`
 
 See [`docs/ide-integration.mdx`](./docs/ide-integration.mdx) for step-by-step setup per tool.
+
+## Docs sync task
+
+When the code surface changes, run the `DOCS_SYNC_PROMPT.md` playbook (at the repo root). Paste that prompt into your agent-capable IDE and let it verify the code base first, then update the Mintlify docs under `docs/` and `docs/es/` to match exactly what lives in `main`. The playbook covers version bumps, endpoint drift, env var drift, channel matrix updates, CLI command drift, and removal of legacy references.

@@ -1,7 +1,8 @@
 """Tenant-aware workspace loader with LRU cache.
 
-This module implements the "Fase A" multi-tenancy strategy described in
-`OpenAgnoCloud/docs/PLAN_MULTITENANCY_2026-04-21.md`.
+This module implements the multi-tenancy strategy used by the runtime:
+each tenant has its own workspace directory and its own Agno agent bundle,
+resolved lazily the first time the tenant is touched and cached via LRU.
 
 Each tenant has its own workspace directory on disk (managed by
 `WorkspaceStore`). This loader lazily builds the Agno `Agent` + friends from

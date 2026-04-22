@@ -12,7 +12,7 @@ This skill covers the channel surface in OpenAgno. For the general-purpose runti
 ```
 Does the user run OpenAgno as a single operator account (self-hosting)?
 ├── Yes → Single-tenant. Use env vars and the Agno-provided /whatsapp/webhook.
-└── No → Multi-tenant behind OpenAgnoCloud.
+└── No → Multi-tenant behind an external control plane.
         ├── Does the user want QR Link? → bridges/whatsapp-qr/ (Baileys, one session per tenant)
         └── Does the user want official Cloud API? → /whatsapp-cloud/{tenant_id}/webhook with AES-encrypted credentials
 ```
@@ -46,9 +46,9 @@ Meta Developer Console:
 3. Verify Token: the exact value of `WHATSAPP_VERIFY_TOKEN`.
 4. Subscribe to the `messages` field.
 
-## WhatsApp Cloud API (multi-tenant, behind OpenAgnoCloud)
+## WhatsApp Cloud API (multi-tenant)
 
-Each tenant brings its own Meta credentials. Cloud stores them AES-256-GCM encrypted in `public.whatsapp_cloud_channels` (Supabase). OSS runtime decrypts with the same `CHANNEL_SECRETS_KEY` and exposes a webhook per tenant.
+Each tenant brings its own Meta credentials. An external control plane stores them AES-256-GCM encrypted in `public.whatsapp_cloud_channels` (Supabase). The runtime decrypts with the same `CHANNEL_SECRETS_KEY` and exposes a webhook per tenant.
 
 Shared key setup (runs once):
 
@@ -56,14 +56,14 @@ Shared key setup (runs once):
 # Generate on one machine
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
-# Set the SAME value in both services
-# OpenAgno/.env
+# Set the SAME value on both sides
+# OpenAgno runtime (.env)
 CHANNEL_SECRETS_KEY=<the_generated_key>
-# OpenAgnoCloud/.env
+# External writer (.env)
 CHANNEL_SECRETS_KEY=<exactly_the_same_key>
 ```
 
-If `CHANNEL_SECRETS_KEY` is missing on OSS, the multi-tenant router is not mounted. Startup log will say:
+If `CHANNEL_SECRETS_KEY` is missing at runtime startup, the multi-tenant router is not mounted. Startup log will say:
 
 ```
 WhatsApp Cloud API multi-tenant desactivado: falta CHANNEL_SECRETS_KEY
@@ -71,16 +71,16 @@ WhatsApp Cloud API multi-tenant desactivado: falta CHANNEL_SECRETS_KEY
 
 Routes:
 
-- `GET /whatsapp-cloud/{tenant_id}/webhook` &mdash; Meta verification. `tenant_id` is the Cloud `tenants.id` UUID. Compares `hub.verify_token` against the decrypted value and echoes `hub.challenge`. Writes `verified_at` on success.
+- `GET /whatsapp-cloud/{tenant_id}/webhook` &mdash; Meta verification. `tenant_id` is the `public.tenants.id` UUID. Compares `hub.verify_token` against the decrypted value and echoes `hub.challenge`. Writes `verified_at` on success.
 - `POST /whatsapp-cloud/{tenant_id}/webhook` &mdash; Inbound event. Validates `X-Hub-Signature-256` with the tenant's `app_secret` (if set). Extracts `text` messages, resolves the agent via `TenantLoader`, runs it, and replies via Graph API `POST /{phone_number_id}/messages` with the tenant's `access_token`. Writes `last_event_at`, `last_send_at`, and `last_error` as the flow progresses.
 
-Customer-facing flow (Cloud side):
+Reference onboarding (implemented by whatever external control plane writes the encrypted row):
 
-1. Customer picks `cloud_api` or `dual` in `/onboarding/channel`.
-2. `/api/onboarding/activate` redirects to `/onboarding/whatsapp-cloud`.
-3. Customer pastes `phoneNumberId`, `accessToken`, optional `wabaId` and `appSecret`.
-4. Optional "Probar token" action calls Graph API `GET /{phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating`.
-5. On save, Cloud encrypts and persists the credentials and displays the Callback URL and freshly generated Verify Token for the customer to paste in Meta Developer Console.
+1. Tenant picks `cloud_api` or `dual` in the control plane's channel picker.
+2. The control plane redirects to its own credentials form (for example, `/onboarding/whatsapp-cloud`).
+3. Tenant pastes `phoneNumberId`, `accessToken`, optional `wabaId` and `appSecret`.
+4. Optional "Test token" action calls Graph API `GET /{phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating`.
+5. On save, the control plane encrypts and persists the credentials, then displays the Callback URL and freshly generated Verify Token for the tenant to paste in Meta Developer Console.
 
 ## WhatsApp QR Link (Baileys bridge)
 

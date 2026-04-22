@@ -1,8 +1,8 @@
-"""WhatsApp Cloud API multi-tenant router para el gateway OSS.
+"""WhatsApp Cloud API multi-tenant router para el gateway.
 
 Cada tenant expone su propio webhook en `/whatsapp-cloud/<tenant_id>/webhook`
 con credenciales cifradas (AES-256-GCM) almacenadas en la tabla
-`public.whatsapp_cloud_channels` del Supabase compartido con OpenAgnoCloud.
+`public.whatsapp_cloud_channels` de Supabase.
 
 Decisiones:
 
@@ -12,8 +12,8 @@ Decisiones:
 - El slug del runtime (`tenants.runtime_slug`) lo resolvemos con JOIN para
   invocar el TenantLoader del OSS, que opera sobre slugs de workspace.
 - La clave maestra AES-256-GCM vive en la env var `CHANNEL_SECRETS_KEY`
-  (32 bytes en base64). Debe ser identica a la del Cloud (Next.js) para que
-  ambos lados puedan cifrar/descifrar.
+  (32 bytes en base64). Debe ser identica en este runtime y en cualquier
+  sistema externo que escriba las filas cifradas en Supabase.
 - Reutilizamos la `DATABASE_URL` que ya construye el gateway para el bundle
   por defecto (misma conexion a Supabase que usa TenantStore).
 """
@@ -65,7 +65,7 @@ def _load_key() -> bytes:
 	if not raw:
 		raise RuntimeError(
 			f"{CHANNEL_SECRETS_KEY_ENV} no esta definido en el entorno; "
-			"se requiere la misma clave base64 que usa OpenAgnoCloud."
+			"se requiere la misma clave base64 que usa el sistema externo que escribe las filas cifradas."
 		)
 	decoded = base64.b64decode(raw)
 	if len(decoded) != 32:

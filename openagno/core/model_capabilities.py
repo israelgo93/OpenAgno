@@ -1,12 +1,10 @@
 """Tabla de capacidades multimodales por modelo del catalogo.
 
-Mirror en Python de `OpenAgnoCloud/src/lib/workspace/model-capabilities.ts`.
 El gateway la usa para decidir si transcribe audio, si pasa imagen/video
 directo al agente, o si devuelve un mensaje explicativo al usuario cuando
 el modelo no soporta la capacidad requerida.
 
-Mantener sincronizada con la version TS. El test
-`tests/test_model_capabilities.py` verifica el shape y los defaults.
+El test `tests/test_model_capabilities.py` verifica el shape y los defaults.
 """
 
 from __future__ import annotations

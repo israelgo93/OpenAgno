@@ -7,21 +7,20 @@ OpenAgno es una plataforma sobre **Agno** para construir y operar agentes median
 
 ## Lo que existe hoy
 
-- CLI `openagno`
+- CLI `openagno` publicada en PyPI
 - workspace declarativo en YAML y Markdown
-- runtime AgentOS con rutas operativas y knowledge
+- runtime AgentOS con rutas operativas, multi-tenant y knowledge
 - templates empaquetados
-- canales para WhatsApp, Slack y Telegram
+- canales: WhatsApp Cloud API (single-tenant y multi-tenant con webhook por tenant), WhatsApp QR via bridge Baileys, Slack, Telegram
 - soporte opcional para AG-UI y A2A
 - PgVector sobre PostgreSQL o Supabase
-- documentacion Mintlify y tests automatizados
-
-## Lo que agrega la fase 10
-
-- rutas de aprovisionamiento multi-tenant
-- aislamiento tenant-aware sobre knowledge usando filtros nativos de Agno
-- exportaciones MCP para IDEs
-- seccion en espanol separada en `docs/es`
+- aprovisionamiento multi-tenant con workspaces y filtros de knowledge por tenant, cache LRU (`TenantLoader`)
+- credenciales BYOK por tenant con fallback seguro a variables de entorno del servidor
+- audio por Whisper cuando el modelo del tenant no soporta audio nativo
+- cliente y servidor MCP
+- exportaciones MCP para IDEs y `AGENTS.md` + skills agnosticas para IDEs con capacidades de agente
+- documentacion Mintlify bilingue (ingles en la raiz, espanol bajo `docs/es/`)
+- licencia Apache 2.0, guia de contribuidor completa, politica de seguridad y templates de issue/PR
 
 ## Flujo recomendado
 

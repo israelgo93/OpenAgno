@@ -30,7 +30,7 @@
 - [ ] Updated docs (`docs/*.mdx` and `docs/es/*.mdx` when applicable)
 - [ ] Updated `.env.example` if a new env var is introduced
 - [ ] No secret material committed
-- [ ] Runtime boundary with OpenAgnoCloud still honored (if the PR touches routes or contract)
+- [ ] Public runtime HTTP contract still honored (if the PR touches `/admin/*`, `/tenants/*`, `/knowledge/*`, or channel webhooks)
 
 ## Testing notes
 

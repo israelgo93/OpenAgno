@@ -4,7 +4,7 @@
 
 OpenAgno is a declarative agent platform built on top of Agno. It packages a CLI, a FastAPI and AgentOS runtime, reusable workspace templates, tenant-aware provisioning, MCP connectivity, channel integrations, scheduler tooling, and PgVector-backed knowledge retrieval in a single repository.
 
-`OpenAgnoCloud` sits in front of this runtime as the hosted control plane. Cloud owns signup, billing, customer and operator portals, and then drives this OSS runtime strictly through the supported HTTP tenant contract.
+The runtime is self-contained: you can install it from PyPI, run it locally, or deploy it behind your own infrastructure. It also exposes a documented HTTP contract (`/admin/*`, `/tenants/*`, `/knowledge/*`, channel webhooks) that any external control plane, dashboard, or orchestrator can consume to build multi-tenant products on top.
 
 ## What ships in this repo
 
@@ -204,9 +204,9 @@ The runtime supports QR-based WhatsApp linking through the optional Baileys brid
 For WhatsApp Cloud API (the official Meta Graph API), the runtime supports two deployment models:
 
 - **Single-tenant**: driven by environment variables (`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`). The runtime mounts a single `/whatsapp/webhook` via Agno. This is what the CLI wizard configures.
-- **Multi-tenant (OpenAgnoCloud)**: each tenant brings its own Meta credentials. Cloud stores them encrypted (AES-256-GCM) in the Supabase `whatsapp_cloud_channels` table and the OSS runtime exposes a webhook per tenant at `GET/POST /whatsapp-cloud/{tenant_id}/webhook`. Requires `CHANNEL_SECRETS_KEY` (a base64-encoded 32-byte key) to be set to the same value in Cloud and OSS so both can encrypt and decrypt.
+- **Multi-tenant**: each tenant brings its own Meta credentials. An external system (for example, a SaaS control plane running alongside this runtime) stores them encrypted (AES-256-GCM) in the Supabase `whatsapp_cloud_channels` table and the runtime exposes a webhook per tenant at `GET/POST /whatsapp-cloud/{tenant_id}/webhook`. Requires `CHANNEL_SECRETS_KEY` (a base64-encoded 32-byte key) to be shared between whichever side writes the encrypted credentials and the runtime that decrypts them.
 
-`OpenAgnoCloud` maps the hosted workspace contract into this existing runtime surface through `whatsapp.mode` (set to `dual` for simultaneous Cloud API and QR Link support), without adding new APIs on the OSS side.
+An external control plane can also drive the `whatsapp.mode` field in the workspace config (`qr_link`, `cloud_api`, or `dual`) over the existing `/tenants/{id}/workspace` HTTP contract without adding new APIs on the runtime side.
 
 Operational notes for the tenant contract:
 
@@ -225,9 +225,9 @@ Key runtime behaviors:
 - tenant runs scope `user_id`, `session_id`, metadata, and knowledge filters
 - tenant knowledge retrieval uses isolated filters for vector search
 
-This is the contract consumed by `OpenAgnoCloud`.
+This is the public multi-tenant contract any external control plane can consume.
 
-The runtime should stay focused on execution. Plan policy, customer onboarding, billing entitlements, and operator rollout logic should remain in Cloud and be translated into runtime configuration through this contract.
+The runtime should stay focused on execution. Plan policy, customer onboarding, billing entitlements, and operator rollout logic should live in whatever layer sits on top of this runtime and be translated into runtime configuration through the tenant HTTP contract.
 
 ## Knowledge and vector search
 

@@ -10,7 +10,7 @@ OpenAgno follows the interface surface currently exposed by Agno: WhatsApp, Slac
 | Channel or protocol | Activation | Requirements |
 |---------------------|------------|--------------|
 | WhatsApp Cloud API (single-tenant) | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | `WHATSAPP_*` env vars |
-| WhatsApp Cloud API (multi-tenant via Cloud) | Cloud onboarding + `whatsapp_cloud_channels` Supabase row | `CHANNEL_SECRETS_KEY` shared with Cloud |
+| WhatsApp Cloud API (multi-tenant) | External system writes encrypted row in `whatsapp_cloud_channels` | `CHANNEL_SECRETS_KEY` shared between writer and runtime |
 | WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | Optional Node bridge |
 | Slack | `channels: [slack]` | `SLACK_TOKEN`, `SLACK_SIGNING_SECRET` |
 | Telegram | `channels: [telegram]` | `TELEGRAM_TOKEN` |
@@ -39,23 +39,23 @@ Routes:
 
 This is what the CLI wizard configures when you answer "Cloud API" in `openagno init`.
 
-### Multi-tenant (OpenAgno Cloud)
+### Multi-tenant
 
-When the runtime is deployed behind OpenAgnoCloud, each tenant can bring their own Meta account with their own Access Token, Phone Number ID, Verify Token, and optional App Secret. Cloud stores these credentials encrypted (AES-256-GCM) in the `whatsapp_cloud_channels` Supabase table, and the OSS runtime exposes a dedicated webhook per tenant.
+When you run this runtime behind an external control plane (for example, a multi-tenant SaaS you build on top of OpenAgno), each tenant can bring their own Meta account with their own Access Token, Phone Number ID, Verify Token, and optional App Secret. The external system stores these credentials encrypted (AES-256-GCM) in the `whatsapp_cloud_channels` Supabase table, and the runtime exposes a dedicated webhook per tenant.
 
-Requires a base64-encoded 32-byte key shared between Cloud and OSS:
+Requires a base64-encoded 32-byte key shared between the external writer and this runtime:
 
 ```bash
-# Generate once and set the SAME value in both services
+# Generate once and set the SAME value on both sides
 CHANNEL_SECRETS_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
 ```
 
-Routes (per tenant, where `tenant_id` is the Cloud `tenants.id` UUID):
+Routes (per tenant, where `tenant_id` is the `public.tenants.id` UUID):
 
 - `GET /whatsapp-cloud/{tenant_id}/webhook` — Meta verification
 - `POST /whatsapp-cloud/{tenant_id}/webhook` — inbound events
 
-The customer pastes this URL and the generated Verify Token in Meta Developer Console &gt; their App &gt; WhatsApp &gt; Configuration &gt; Webhook, and subscribes to the `messages` field. The runtime loads the per-tenant credentials, decrypts them with `CHANNEL_SECRETS_KEY`, validates the `X-Hub-Signature-256`, resolves the tenant's agent through the `TenantLoader`, runs the agent, and replies via Graph API with the tenant's own Access Token.
+The tenant pastes this URL and the generated Verify Token in Meta Developer Console &gt; their App &gt; WhatsApp &gt; Configuration &gt; Webhook, and subscribes to the `messages` field. The runtime loads the per-tenant credentials, decrypts them with `CHANNEL_SECRETS_KEY`, validates the `X-Hub-Signature-256`, resolves the tenant's agent through the `TenantLoader`, runs the agent, and replies via Graph API with the tenant's own Access Token.
 
 If `CHANNEL_SECRETS_KEY` is not set, the multi-tenant webhook is not mounted and the runtime still serves the single-tenant `/whatsapp/webhook` from Agno.
 

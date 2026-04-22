@@ -858,9 +858,10 @@ logger.info(f"WhatsApp QR routes habilitadas (multi-tenant bridge: {_bridge_url}
 
 # El endpoint /whatsapp-cloud/{tenant_id}/webhook es el canal oficial Meta
 # multi-tenant: cada tenant tiene su propia URL pegada en Meta Developer Console
-# con credenciales cifradas en Supabase (AES-256-GCM) compartidas con el Cloud.
-# Se monta SIEMPRE porque el tenant puede activar Cloud API despues del arranque
-# sin necesidad de reiniciar el runtime.
+# con credenciales cifradas en Supabase (AES-256-GCM). La clave maestra
+# (CHANNEL_SECRETS_KEY) debe ser la misma que usa el sistema externo que
+# escribe las filas. Se monta SIEMPRE que la env este presente, porque el
+# tenant puede activar Cloud API despues del arranque sin reiniciar el runtime.
 if os.getenv("CHANNEL_SECRETS_KEY"):
 	try:
 		from openagno.channels.whatsapp_cloud import mount_on as mount_whatsapp_cloud
@@ -870,7 +871,7 @@ if os.getenv("CHANNEL_SECRETS_KEY"):
 else:
 	logger.info(
 		"WhatsApp Cloud API multi-tenant desactivado: falta CHANNEL_SECRETS_KEY "
-		"(misma clave base64 que OpenAgnoCloud)."
+		"(misma clave base64 que usa el sistema externo que escribe las filas cifradas)."
 	)
 
 if "slack" in channels:

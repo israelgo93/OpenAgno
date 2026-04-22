@@ -31,7 +31,7 @@ This skill is IDE-agnostic. It works the same way whether you are in Claude Code
 - PostgreSQL with `pgvector` (local container `pgvector/pgvector:pg17`, or a hosted Postgres like Supabase with the extension enabled)
 - An LLM API key: `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or AWS Bedrock credentials
 - Optional: Node 20+ if you plan to enable the WhatsApp QR bridge (`bridges/whatsapp-qr/`)
-- Optional: `CHANNEL_SECRETS_KEY` (32 bytes base64) if you plan to serve multi-tenant WhatsApp Cloud API from this runtime behind OpenAgnoCloud
+- Optional: `CHANNEL_SECRETS_KEY` (32 bytes base64) if you plan to serve multi-tenant WhatsApp Cloud API from this runtime behind an external control plane
 
 ## Install from scratch
 
@@ -94,7 +94,7 @@ Custom admin:
 - `GET /admin/health` &mdash; agents, teams, model, channels, scheduler state. Accepts `?tenant_slug=<slug>`.
 - `POST /admin/reload`, `POST /admin/fallback/activate`, `POST /admin/fallback/restore`
 
-Tenants (HTTP contract consumed by OpenAgnoCloud):
+Tenants (public multi-tenant HTTP contract):
 
 - `GET /tenants`, `POST /tenants`
 - `GET/PATCH/DELETE /tenants/{tenant_id}`
@@ -157,4 +157,4 @@ Add the MCP server to your IDE using the templates in `ide-configs/`. Full step-
 
 ## Spanish summary
 
-Usa OpenAgno cuando necesites agentes declarativos sobre Agno, runtime operativo, knowledge con PgVector, canales (WhatsApp Cloud API single/multi-tenant, QR, Slack, Telegram), aprovisionamiento multi-tenant o documentacion conectable por MCP. Lee `AGENTS.md` en la raiz antes que cualquier otro archivo. Siempre corre `openagno validate` antes de `openagno start` y mantene los cambios dentro del contrato HTTP que consume OpenAgnoCloud.
+Usa OpenAgno cuando necesites agentes declarativos sobre Agno, runtime operativo, knowledge con PgVector, canales (WhatsApp Cloud API single/multi-tenant, QR, Slack, Telegram), aprovisionamiento multi-tenant o documentacion conectable por MCP. Lee `AGENTS.md` en la raiz antes que cualquier otro archivo. Siempre corre `openagno validate` antes de `openagno start` y mantene los cambios dentro del contrato HTTP publico del runtime.

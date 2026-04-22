@@ -3,6 +3,36 @@ title: Changelog
 description: Historial resumido de versiones públicas y milestones del producto.
 ---
 
+## Unreleased
+
+Trabajo acumulado en `main` desde el corte de `v1.3.0`. Estos cambios estaran
+empaquetados en la proxima release.
+
+- `openagno/channels/whatsapp_cloud.py`: nuevo router multi-tenant
+  `GET/POST /whatsapp-cloud/{tenant_id}/webhook` que verifica firma
+  `X-Hub-Signature-256` por tenant, descifra credenciales con
+  AES-256-GCM desde `public.whatsapp_cloud_channels`, resuelve el agente
+  via `TenantLoader` y responde via Graph API con el Access Token del
+  propio tenant. Se monta cuando la env `CHANNEL_SECRETS_KEY` esta
+  presente; si falta, el runtime sigue sirviendo el `/whatsapp/webhook`
+  single-tenant de Agno y emite un log claro en el arranque.
+- `bridges/whatsapp-qr/index.js`: upgrade de Baileys `6.17.16` a
+  `7.0.0-rc.9` para resolver el bug `stream:error type=replaced` que
+  disparaba loop infinito de QR tras el primer mensaje. Incluye
+  migracion a ESM, manejo no destructivo de `loggedOut`, reintento
+  inmediato en `restartRequired` (515), deteccion temprana de
+  dispositivo fantasma, polling `500ms x 4` en `/send` antes de 503,
+  y cola `pendingOutbox` con TTL 60s que drena al proximo `open`.
+- Documentacion Mintlify alineada: nueva pagina `whatsapp-cloud-api.mdx`,
+  matriz de canales con los dos modos (single-tenant y multi-tenant),
+  politica de secretos AES-256-GCM en `security.mdx`.
+- `AGENTS.md` al dia con el baseline actual, instrucciones de setup
+  para cualquier IDE con capacidades de agente, y skills agnosticas
+  bajo `.agents/skills/` (openagno, openagno-channels, mintlify).
+- `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/*` y
+  `.github/PULL_REQUEST_TEMPLATE.md` ampliados para contribuciones
+  open source estandar.
+
 ## v1.3.0
 
 Runtime multi-tenant real con cache per-tenant, BYOK y audio por Whisper.

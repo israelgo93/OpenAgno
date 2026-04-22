@@ -1,6 +1,6 @@
 # Contributing to OpenAgno
 
-Thanks for helping move OpenAgno forward. This guide captures what we expect from a healthy contribution so reviews go fast and the runtime stays coherent with the docs and with OpenAgnoCloud.
+Thanks for helping move OpenAgno forward. This guide captures what we expect from a healthy contribution so reviews go fast and the runtime stays coherent with the docs.
 
 ## Scope of the project
 
@@ -14,7 +14,7 @@ OpenAgno is the declarative **runtime** for Agno-based agents. It ships:
 - PgVector-backed knowledge ingestion and semantic search
 - MCP client and server
 
-OpenAgnoCloud (hosted SaaS) lives in a separate repository and consumes **only** the public OSS HTTP contract. Contributions here should not tie the runtime to Cloud-specific concerns.
+The runtime is self-contained. External control planes, dashboards, or orchestrators integrate with it strictly through the documented HTTP contract. Contributions here should not tie the runtime to any specific hosted service, billing system, or vendor-specific UI.
 
 ## Development setup
 
@@ -52,7 +52,9 @@ If your change touches knowledge / vector search, run a local Postgres with PgVe
 
 ## Documentation policy
 
-The Mintlify docs under `docs/` are the public source of truth for operators and for OpenAgnoCloud. When you change any of the following, update the related docs in the same PR:
+The Mintlify docs under `docs/` are the public source of truth for operators and for any external system that talks to this runtime. When you change any of the following, update the related docs in the same PR.
+
+For larger syncs after a long stretch of unreleased commits, use [`DOCS_SYNC_PROMPT.md`](./DOCS_SYNC_PROMPT.md) at the repo root. It is a structured prompt that any agent-capable IDE (Claude Code, Cursor, Windsurf, Copilot Workspace) can run end-to-end: verify the code base, then reconcile the docs.
 
 | Code change | Docs to update |
 |-------------|----------------|
@@ -61,7 +63,7 @@ The Mintlify docs under `docs/` are the public source of truth for operators and
 | New env var or secret storage | `docs/security.mdx`, `docs/deployment.mdx`, `.env.example` |
 | New template | `docs/workspace/templates.mdx` |
 | New CLI command | `docs/cli.mdx` |
-| Runtime boundary (contract with Cloud) | `docs/api.mdx` and the `## Runtime boundary` section in `OpenAgnoCloud/README.md` (keep them aligned) |
+| Runtime contract change | `docs/api.mdx` and clearly document the breaking behavior in `docs/changelog.mdx` |
 
 The navigation index for docs lives in `docs/docs.json`. Add new pages there in the appropriate group and mirror them in the `es` tree when relevant.
 
@@ -83,7 +85,7 @@ The navigation index for docs lives in `docs/docs.json`. Add new pages there in 
 
 1. Decide whether it fits the current Agno interface (most do). If yes, activate it in `gateway.py` under the existing `if "<channel>" in channels:` block. If no, add a module under `openagno/channels/<name>.py` following the `whatsapp_cloud.py` pattern.
 2. Document activation, env vars, and public routes in `docs/channels.mdx` and mirror the changes to `docs/es/channels.mdx`.
-3. If the channel requires secrets shared with OpenAgnoCloud, document the env var and the Supabase persistence in `docs/security.mdx`.
+3. If the channel requires secrets that flow from an external system into Supabase (as in the multi-tenant WhatsApp Cloud API flow), document the env var and the persistence model in `docs/security.mdx`.
 4. Add at least one test covering the happy path and one covering signature or auth rejection.
 
 ## Commit messages
