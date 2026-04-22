@@ -1,0 +1,285 @@
+"""Tests unitarios del canal WhatsApp Cloud API multi-tenant.
+
+Evitamos tocar la DB real: parcheamos `_dsn_from_env` y `psycopg.connect` con
+un stub. Tambien cifamos con la misma clave AES-256-GCM que va a leer el
+modulo para validar el round-trip con Node (AESGCM + authTag en los ultimos
+16 bytes).
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+from contextlib import contextmanager
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from fastapi.testclient import TestClient
+from fastapi import FastAPI
+
+from openagno.channels import whatsapp_cloud as wc
+
+
+TEST_KEY_RAW = os.urandom(32)
+TEST_KEY_B64 = base64.b64encode(TEST_KEY_RAW).decode("ascii")
+
+
+def _encrypt(plaintext: str) -> tuple[str, str]:
+	"""Cifra con el formato que usa el Cloud (Node): cipher = ct + authTag en base64."""
+	nonce = os.urandom(12)
+	aesgcm = AESGCM(TEST_KEY_RAW)
+	ct_with_tag = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), associated_data=None)
+	return (
+		base64.b64encode(ct_with_tag).decode("ascii"),
+		base64.b64encode(nonce).decode("ascii"),
+	)
+
+
+def _build_row(
+	*,
+	tenant_id: str = "11111111-1111-1111-1111-111111111111",
+	runtime_slug: str = "acme",
+	phone_number_id: str = "111122223333",
+	waba_id: str | None = "999888777",
+	graph_api_version: str = "v21.0",
+	access_token: str = "EAA_test_access_token",
+	verify_token: str = "verify_abc_hex",
+	app_secret: str | None = "app_secret_test",
+) -> tuple:
+	at_c, at_n = _encrypt(access_token)
+	vt_c, vt_n = _encrypt(verify_token)
+	if app_secret:
+		as_c, as_n = _encrypt(app_secret)
+	else:
+		as_c, as_n = (None, None)
+	return (
+		tenant_id,
+		phone_number_id,
+		waba_id,
+		graph_api_version,
+		at_c,
+		at_n,
+		vt_c,
+		vt_n,
+		as_c,
+		as_n,
+		runtime_slug,
+	)
+
+
+class _FakeCursor:
+	def __init__(self, row: tuple | None):
+		self._row = row
+
+	def execute(self, *_args, **_kwargs):
+		return None
+
+	def fetchone(self):
+		return self._row
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *_a):
+		return False
+
+
+class _FakeConn:
+	def __init__(self, row: tuple | None):
+		self._row = row
+
+	def cursor(self):
+		return _FakeCursor(self._row)
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *_a):
+		return False
+
+
+@contextmanager
+def _patch_db(row: tuple | None):
+	def _fake_connect(*_a, **_kw):
+		return _FakeConn(row)
+
+	with (
+		patch.object(wc.psycopg, "connect", _fake_connect),
+		patch.object(wc, "_dsn_from_env", lambda: "postgresql://fake"),
+	):
+		yield
+
+
+@pytest.fixture(autouse=True)
+def _env_key():
+	old = os.environ.get("CHANNEL_SECRETS_KEY")
+	os.environ["CHANNEL_SECRETS_KEY"] = TEST_KEY_B64
+	yield
+	if old is None:
+		os.environ.pop("CHANNEL_SECRETS_KEY", None)
+	else:
+		os.environ["CHANNEL_SECRETS_KEY"] = old
+
+
+def test_decrypt_roundtrip():
+	ct, nonce = _encrypt("hola mundo")
+	assert wc._decrypt(ct, nonce) == "hola mundo"
+
+
+def test_decrypt_tampered_fails():
+	ct, nonce = _encrypt("secreto")
+	raw = bytearray(base64.b64decode(ct))
+	raw[0] ^= 0xFF
+	tampered = base64.b64encode(bytes(raw)).decode("ascii")
+	with pytest.raises(Exception):
+		wc._decrypt(tampered, nonce)
+
+
+def test_load_cloud_config_maps_joined_slug():
+	row = _build_row(runtime_slug="acme-2")
+	with _patch_db(row):
+		cfg = wc.load_cloud_config("11111111-1111-1111-1111-111111111111")
+	assert cfg.runtime_slug == "acme-2"
+	assert cfg.phone_number_id == "111122223333"
+	assert cfg.access_token == "EAA_test_access_token"
+	assert cfg.verify_token == "verify_abc_hex"
+	assert cfg.app_secret == "app_secret_test"
+
+
+def test_load_cloud_config_missing_app_secret():
+	row = _build_row(app_secret=None)
+	with _patch_db(row):
+		cfg = wc.load_cloud_config("11111111-1111-1111-1111-111111111111")
+	assert cfg.app_secret is None
+
+
+def test_load_cloud_config_not_found():
+	with _patch_db(None):
+		with pytest.raises(wc.ConfigNotFoundError):
+			wc.load_cloud_config("unknown")
+
+
+def test_verify_signature():
+	secret = "s3cr3t"
+	body = b'{"hello":"world"}'
+	sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+	assert wc.verify_signature(secret, body, sig) is True
+	assert wc.verify_signature(secret, body, "sha256=wrong") is False
+	assert wc.verify_signature(secret, body, None) is False
+
+
+def test_extract_messages_filters_non_text():
+	payload = {
+		"object": "whatsapp_business_account",
+		"entry": [
+			{
+				"changes": [
+					{
+						"value": {
+							"messages": [
+								{"id": "m1", "from": "5491111", "type": "text", "text": {"body": "hola"}},
+								{"id": "m2", "from": "5491111", "type": "reaction"},
+								{"id": "m3", "from": "5492222", "type": "text", "text": {"body": ""}},
+								{"id": "m4", "from": "5493333", "type": "text", "text": {"body": "ok"}},
+							]
+						}
+					}
+				]
+			}
+		],
+	}
+	msgs = wc._extract_messages(payload)
+	assert [m["id"] for m in msgs] == ["m1", "m4"]
+
+
+def _build_app(row: tuple | None, tenant_loader: Any | None = None):
+	app = FastAPI()
+	app.state.tenant_loader = tenant_loader
+	router = wc.create_router(get_tenant_loader=lambda: app.state.tenant_loader)
+	app.include_router(router)
+	return app
+
+
+def test_webhook_verify_ok():
+	row = _build_row(verify_token="vt_ok_xxxx")
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+	):
+		app = _build_app(row)
+		client = TestClient(app)
+		resp = client.get(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			params={"hub.mode": "subscribe", "hub.verify_token": "vt_ok_xxxx", "hub.challenge": "42"},
+		)
+	assert resp.status_code == 200
+	assert resp.text == "42"
+
+
+def test_webhook_verify_wrong_token():
+	row = _build_row(verify_token="correct")
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+	):
+		app = _build_app(row)
+		client = TestClient(app)
+		resp = client.get(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			params={"hub.mode": "subscribe", "hub.verify_token": "wrong", "hub.challenge": "42"},
+		)
+	assert resp.status_code == 403
+
+
+def test_webhook_verify_missing_config():
+	with (
+		_patch_db(None),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+	):
+		app = _build_app(None)
+		client = TestClient(app)
+		resp = client.get(
+			"/whatsapp-cloud/unknown-uuid/webhook",
+			params={"hub.mode": "subscribe", "hub.verify_token": "x", "hub.challenge": "1"},
+		)
+	assert resp.status_code == 404
+
+
+def test_webhook_post_invalid_signature():
+	row = _build_row(app_secret="top_secret")
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+	):
+		app = _build_app(row)
+		client = TestClient(app)
+		resp = client.post(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			content=b'{"object":"whatsapp_business_account"}',
+			headers={"content-type": "application/json", "x-hub-signature-256": "sha256=wrong"},
+		)
+	assert resp.status_code == 401
+
+
+def test_webhook_post_no_app_secret_accepts_any_signature():
+	row = _build_row(app_secret=None)
+	body_dict = {"object": "whatsapp_business_account", "entry": []}
+	body = json.dumps(body_dict).encode()
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+	):
+		app = _build_app(row)
+		client = TestClient(app)
+		resp = client.post(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			content=body,
+			headers={"content-type": "application/json"},
+		)
+	assert resp.status_code == 200
+	assert resp.json()["status"] == "no_messages"

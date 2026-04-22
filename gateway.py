@@ -856,6 +856,23 @@ _bridge_url = wa_config.get("qr_link", {}).get("bridge_url", os.getenv("OPENAGNO
 _setup_whatsapp_qr_routes(base_app, _bridge_url)
 logger.info(f"WhatsApp QR routes habilitadas (multi-tenant bridge: {_bridge_url})")
 
+# El endpoint /whatsapp-cloud/{tenant_id}/webhook es el canal oficial Meta
+# multi-tenant: cada tenant tiene su propia URL pegada en Meta Developer Console
+# con credenciales cifradas en Supabase (AES-256-GCM) compartidas con el Cloud.
+# Se monta SIEMPRE porque el tenant puede activar Cloud API despues del arranque
+# sin necesidad de reiniciar el runtime.
+if os.getenv("CHANNEL_SECRETS_KEY"):
+	try:
+		from openagno.channels.whatsapp_cloud import mount_on as mount_whatsapp_cloud
+		mount_whatsapp_cloud(base_app)
+	except Exception as exc:  # noqa: BLE001
+		logger.warning(f"WhatsApp Cloud API multi-tenant no disponible: {exc}")
+else:
+	logger.info(
+		"WhatsApp Cloud API multi-tenant desactivado: falta CHANNEL_SECRETS_KEY "
+		"(misma clave base64 que OpenAgnoCloud)."
+	)
+
 if "slack" in channels:
 	from agno.os.interfaces.slack import Slack
 	interfaces.append(Slack(agent=main_agent))
