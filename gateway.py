@@ -486,25 +486,30 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 			# como credencial de Whisper.
 			tenant_loader = app.state.tenant_loader
 			tenant_bundle = None
+			tenant_caps = None
 			if tenant_slug != DEFAULT_TENANT:
 				try:
 					tenant_bundle = tenant_loader.get_or_load(tenant_slug)
 				except LookupError as exc:
 					logger.error(f"[{tenant_slug}] No se pudo cargar workspace: {exc}")
 					return {"status": "error", "error": f"tenant_workspace_missing: {exc}"}
+				from openagno.core.model_capabilities import get_model_capabilities
 
-			# --- Preprocesamiento de audio para tenants ---
-			# La mayoria de modelos de texto (gpt-5-mini, claude-*, gemini-*
-			# salvo variantes `-audio-preview`) responden 400 si reciben un
-			# bloque de audio raw. Antes de llamar al agente transcribimos con
-			# Whisper usando la API key del tenant (BYOK). Si el tenant no usa
-			# OpenAI, caemos a la OPENAI_API_KEY del servidor como fallback.
+				tenant_model_cfg = tenant_bundle["config"].get("model", {}) or {}
+				tenant_caps = get_model_capabilities(tenant_model_cfg.get("id"))
+
+			# --- Audio: transcribir si el modelo no soporta audio nativo ---
+			# Gemini 2.5+/3 aceptan audio raw; GPT-5, Claude 4.x y Bedrock no.
+			# Cuando la capacidad `audio` es false transcribimos con Whisper
+			# usando la API key del tenant (BYOK) o la del servidor (fallback).
 			# El tenant `default` sigue yendo por el wrapper STT del operador.
 			if (
 				media_bytes
 				and msg_type == "audio"
 				and tenant_slug != DEFAULT_TENANT
 				and tenant_bundle is not None
+				and tenant_caps is not None
+				and not tenant_caps["audio"]
 			):
 				tenant_model_cfg = tenant_bundle["config"].get("model", {})
 				provider = str(tenant_model_cfg.get("provider", "")).strip().lower()
@@ -549,6 +554,47 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 						"configura una API key de OpenAI en tu workspace.]"
 					)
 				# El agente debe ver solo texto: descartamos los bytes de audio.
+				media_bytes = None
+				msg_type = "text"
+
+			# --- Imagen: si el modelo no soporta vision devolvemos explicacion ---
+			if (
+				media_bytes
+				and msg_type == "image"
+				and tenant_slug != DEFAULT_TENANT
+				and tenant_caps is not None
+				and not tenant_caps["image"]
+			):
+				logger.warning(
+					f"[{tenant_slug}] Imagen recibida pero modelo no soporta vision; "
+					f"devolviendo placeholder al agente"
+				)
+				text = (
+					"[Recibi tu imagen pero mi modelo actual no puede analizarla. "
+					"Cambia a un modelo multimodal (gpt-5-mini, claude-sonnet-4-5, "
+					"gemini-2.5-flash) desde el dashboard o via set_model.]"
+				)
+				media_bytes = None
+				msg_type = "text"
+
+			# --- Video: solo Gemini lo procesa nativamente en nuestro catalogo ---
+			if (
+				media_bytes
+				and msg_type == "video"
+				and tenant_slug != DEFAULT_TENANT
+				and tenant_caps is not None
+				and not tenant_caps["video"]
+			):
+				logger.warning(
+					f"[{tenant_slug}] Video recibido pero modelo no soporta video; "
+					f"devolviendo placeholder al agente"
+				)
+				text = (
+					"[Recibi tu video pero mi modelo actual no puede procesarlo. "
+					"El unico provider que entiende video en nuestro catalogo es "
+					"Google Gemini (gemini-2.5-flash, gemini-2.5-pro, gemini-3-*). "
+					"Cambia de modelo desde el dashboard o via set_model para activarlo.]"
+				)
 				media_bytes = None
 				msg_type = "text"
 
