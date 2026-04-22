@@ -31,6 +31,12 @@ const OUTBOX_TTL_MS = 60_000;
 const SEND_READY_POLL_INTERVAL_MS = 500;
 const SEND_READY_POLL_ATTEMPTS = 4;
 const REPLACED_EARLY_WINDOW_MS = 30_000;
+// Workaround documentado en whiskeysockets/Baileys#502: para el codigo 440
+// (connectionReplaced) WhatsApp necesita >= 30s para limpiar su estado
+// server-side. Reintentar antes reproduce el loop. Lo mantenemos para 7.x
+// como defensa en profundidad aunque las session-key fixes de 7.0.0-rc.9
+// ya deberian prevenir el sintoma.
+const REPLACED_RETRY_DELAY_MS = 30_000;
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
@@ -274,11 +280,11 @@ async function connectTenant(slug) {
 					session.retries += 1;
 					console.log(
 						`[${slug}] Conflicto 'replaced' (${session.replacedEvents.length}/3 en 30s). ` +
-						'Reintento en 2s sin limpiar creds.',
+						`Reintento en ${REPLACED_RETRY_DELAY_MS / 1000}s sin limpiar creds (workaround baileys#502).`,
 					);
 					setTimeout(
 						() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)),
-						2000,
+						REPLACED_RETRY_DELAY_MS,
 					);
 					return;
 				}
