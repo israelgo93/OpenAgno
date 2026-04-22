@@ -49,6 +49,23 @@ openagno validate
 openagno start --foreground
 ```
 
+## Reiniciar el runtime tras cambios de configuración
+
+Los comandos `openagno init`, `openagno add`, `openagno create agent` y cualquier edición manual de `workspace/config.yaml`, `workspace/agents/*.yaml`, `workspace/tools.yaml` o `.env` **cambian los archivos en disco pero no recargan el proceso en ejecución**. El agente ya construido queda en memoria con el modelo y los canales anteriores hasta que reinicies el runtime.
+
+Si después de cambiar el modelo, el proveedor, las API keys o los canales los mensajes entran y devuelven `Sorry, there was an error processing your message` (o quedan en silencio), casi siempre es esta causa: el proceso sigue cargado con la configuración vieja. La señal en logs típica es ver un `ERROR ... API key not set` para el proveedor anterior aunque `.env` ya tenga la clave del proveedor nuevo.
+
+Cómo reiniciar según tu modo de despliegue:
+
+- **Supervisor local**: `openagno restart`
+- **Foreground**: `Ctrl+C` y `openagno start --foreground` de nuevo
+- **systemd**: `sudo systemctl restart openagno`
+- **Docker Compose**: `docker compose restart gateway`
+
+Una vez reiniciado, `curl http://127.0.0.1:8000/admin/health` debe reportar el `model.provider` y `model.id` nuevos, y el próximo mensaje procesarse con la configuración actualizada.
+
+Multi-tenant: si solo cambió el workspace de un tenant específico (a través de `PUT /tenants/{tenant_id}/workspace` o editando `workspaces/<slug>/workspace/`), usa `POST /tenants/{tenant_id}/reload` para invalidar únicamente el bundle de ese tenant en el `TenantLoader`, sin reiniciar todo el proceso.
+
 ## Alcance actual
 
 - `openagno deploy aws` todavía no provisiona infraestructura.

@@ -147,6 +147,25 @@ Auto-generated:
 2. `curl http://127.0.0.1:8000/admin/health` &mdash; check agents loaded, model, channel state
 3. `journalctl -u openagno -n 100 --no-pager` if running under systemd
 
+### Symptom: message channels return "Sorry, there was an error processing your message" or stay silent after editing config
+
+Almost always means the runtime is still holding the previous workspace in memory. `openagno init`, `openagno add`, `openagno create agent` and manual edits of `workspace/*.yaml` or `.env` do **not** reload the process. You must restart the runtime:
+
+- Supervisor: `openagno restart`
+- Foreground: Ctrl+C and start again
+- systemd: `sudo systemctl restart openagno`
+- Docker Compose: `docker compose restart gateway`
+
+After the restart, confirm the new config is loaded with:
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+The `model` field in the response must reflect what you set in `workspace/config.yaml`. If it still shows the old provider/id, the restart did not pick up the config (check `OPENAGNO_ROOT` or which process is actually bound to port 8000).
+
+For per-tenant edits, prefer `POST /tenants/{tenant_id}/reload` over a full restart.
+
 ## Public documentation endpoints
 
 - MCP server: `https://docs.openagno.com/mcp`

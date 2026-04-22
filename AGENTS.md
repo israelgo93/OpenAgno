@@ -170,6 +170,19 @@ Do not widen this contract casually. In particular:
 6. Before finishing, run the relevant validation commands and report any gaps
 7. If a task requires coordinated changes in an external system consuming this runtime, keep the OpenAgno change self-contained and clearly document any contract impact
 
+## Operational note: reload after config changes
+
+`openagno init`, `openagno add`, `openagno create agent` and manual edits of `workspace/config.yaml`, `workspace/agents/*.yaml`, `workspace/tools.yaml` or `.env` **change files on disk but do not reload the running process**. The runtime keeps the previously constructed agent in memory (same model, same channels, same keys) until it restarts. If after changing the model provider a user-facing channel starts returning "Sorry, there was an error processing your message" or stays silent, it is almost always this: the process still holds the old workspace.
+
+Restart the runtime according to how you run it:
+
+- Supervisor: `openagno restart`
+- Foreground: `Ctrl+C` then `openagno start --foreground` again
+- systemd: `sudo systemctl restart openagno`
+- Docker Compose: `docker compose restart gateway`
+
+For per-tenant workspace updates (`PUT /tenants/{tenant_id}/workspace`), use `POST /tenants/{tenant_id}/reload` instead of restarting the whole process; it invalidates only that tenant's bundle in the `TenantLoader`.
+
 ## IDE and agent integration
 
 - MCP config templates: `ide-configs/cursor-mcp.json`, `ide-configs/vscode-mcp.json`, `ide-configs/windsurf-mcp.json`, `ide-configs/claude-code-setup.sh`

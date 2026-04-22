@@ -72,3 +72,39 @@ OpenAgno deduplica por `message_id`. Si ves replays:
 - confirma que el proveedor reenvía el mismo `message_id`
 - revisa logs de duplicados
 - valida que el webhook esté respondiendo 200
+
+## WhatsApp responde `Sorry, there was an error processing your message` (o no responde nada)
+
+Ese texto lo devuelve la interfaz `Whatsapp` de Agno cuando captura una excepción al ejecutar el agente. La causa más frecuente es que el runtime tiene en memoria el workspace anterior al último `openagno init`/`openagno add` o a la edición manual de `.env` o `workspace/`. El proceso no releé los archivos automáticamente.
+
+Diagnóstico:
+
+```bash
+sudo journalctl -u openagno -n 100 --no-pager | grep -Ei "error|api key"
+```
+
+Si ves `ERROR ... API key not set` para el proveedor anterior aunque tu `.env` ya tenga la clave del proveedor nuevo, confirmas el desfase.
+
+Fix:
+
+- Supervisor: `openagno restart`
+- Foreground: Ctrl+C y `openagno start --foreground` de nuevo
+- systemd: `sudo systemctl restart openagno`
+- Docker Compose: `docker compose restart gateway`
+
+Y confirma que el health refleja la configuración nueva:
+
+```bash
+curl http://127.0.0.1:8000/admin/health
+```
+
+El campo `model` debe coincidir con lo que está en `workspace/config.yaml`.
+
+Si el agente usa tools externas (por ejemplo `crawl4ai`), instala sus dependencias antes de usarlas:
+
+```bash
+source .venv/bin/activate
+playwright install chromium
+```
+
+Para cambios limitados a un solo tenant, prefiere `POST /tenants/{tenant_id}/reload` antes que reiniciar el proceso entero.
