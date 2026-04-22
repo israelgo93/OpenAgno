@@ -147,6 +147,10 @@ function enqueuePending(session, jid, text) {
 	session.pendingOutbox.push({ jid, text, ts: now });
 }
 
+function sleep(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function drainPendingOutbox(session) {
 	if (!session.sock || session.status !== 'connected') return;
 	const now = Date.now();
@@ -182,6 +186,10 @@ async function connectTenant(slug) {
 	}
 	if (session.connecting) return session;
 	if (session.sock && session.status === 'connected') return session;
+	if (session.needsRelink) {
+		session.status = 'needs_relink';
+		return session;
+	}
 
 	if (session.retries >= MAX_RETRIES) {
 		console.log(`[${slug}] Maximo de reintentos (${MAX_RETRIES}). Se requiere accion manual.`);
@@ -207,6 +215,7 @@ async function connectTenant(slug) {
 
 		sock.ev.on('connection.update', (update) => {
 			const { connection, lastDisconnect, qr } = update;
+			if (session.sock !== sock) return;
 
 			if (qr) {
 				session.currentQR = qr;
@@ -489,12 +498,25 @@ app.get('/sessions/:tenantSlug/status', (req, res) => {
 app.get('/sessions/:tenantSlug/qr', async (req, res) => {
 	const ctx = ensureSessionOr404(req, res);
 	if (!ctx) return;
-	const { session } = ctx;
+	const { slug, session } = ctx;
+	if (!session.currentQR && !session.sock && !session.connecting && !session.needsRelink) {
+		try {
+			await connectTenant(slug);
+		} catch (err) {
+			return res.status(500).json({ error: err?.message || 'connect_failed' });
+		}
+	}
+	if (!session.currentQR && !session.needsRelink) {
+		for (let i = 0; i < 10; i += 1) {
+			if (session.currentQR || session.status === 'connected' || session.needsRelink) break;
+			await sleep(300);
+		}
+	}
 	if (!session.currentQR) {
-		return res.json({ status: session.status, qr: null });
+		return res.json({ status: session.status, qr: null, needs_relink: Boolean(session.needsRelink) });
 	}
 	const qrDataUrl = await QRCode.toDataURL(session.currentQR);
-	res.json({ status: 'waiting_qr', qr: qrDataUrl });
+	res.json({ status: 'waiting_qr', qr: qrDataUrl, needs_relink: Boolean(session.needsRelink) });
 });
 
 app.get('/sessions/:tenantSlug/qr/image', async (req, res) => {
