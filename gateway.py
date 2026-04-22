@@ -1031,6 +1031,66 @@ async def admin_tenant_reload(request: Request, tenant_slug: str):
 	return {"status": "reloaded", "tenant_slug": tenant_slug, "evicted": evicted}
 
 
+@base_app.post("/admin/tenants/{tenant_slug}/chat")
+@limiter.limit("60/minute")
+async def admin_tenant_chat(request: Request, tenant_slug: str, payload: dict):
+	"""Invoca al agente principal del tenant con un mensaje de texto.
+
+	Usado por el mini-chat del dashboard del Cloud. Body esperado:
+	{ "message": str, "user_id": str? (default: "dashboard"), "session_id": str? (default: "dashboard-preview") }
+
+	Retorna { "response": str, "tenant_slug": str }. No maneja media porque
+	el dashboard solo necesita el trayecto de texto para validar identidad y
+	respuestas rapidas del agente.
+	"""
+	from openagno.core.tenant import DEFAULT_TENANT, normalize_tenant_id
+
+	slug = normalize_tenant_id(tenant_slug)
+	if not slug or ":" in slug:
+		raise HTTPException(status_code=400, detail="invalid tenant_slug")
+
+	message = str(payload.get("message") or "").strip()
+	if not message:
+		raise HTTPException(status_code=400, detail="missing message")
+	if len(message) > 4000:
+		raise HTTPException(status_code=413, detail="message too long")
+
+	user_id = str(payload.get("user_id") or "dashboard").strip()
+	session_id = str(payload.get("session_id") or f"dashboard-preview:{slug}").strip()
+
+	# Resolver el bundle del tenant (misma cache del TenantLoader).
+	if slug == DEFAULT_TENANT:
+		# Para el operador usamos el wrapper global (STT/TTS + fallback).
+		response = await _qr_agent_arun(message, user_id=user_id, session_id=session_id)
+	else:
+		tenant_loader = request.app.state.tenant_loader
+		try:
+			tenant_bundle = tenant_loader.get_or_load(slug)
+		except LookupError as exc:
+			raise HTTPException(status_code=404, detail=f"tenant_workspace_missing: {exc}") from exc
+		response = await tenant_bundle["main_agent"].arun(
+			message, user_id=user_id, session_id=session_id,
+		)
+
+	response_text = None
+	if response is not None:
+		if hasattr(response, "content") and response.content is not None:
+			response_text = str(response.content)
+		elif hasattr(response, "messages") and response.messages:
+			for msg in reversed(response.messages):
+				role = getattr(msg, "role", "")
+				content = getattr(msg, "content", None)
+				if role == "assistant" and content:
+					response_text = str(content)
+					break
+	if not response_text or not response_text.strip() or response_text == "None":
+		response_text = "(respuesta vacia)"
+	else:
+		response_text = response_text.strip()
+
+	return {"response": response_text, "tenant_slug": slug}
+
+
 @base_app.post("/admin/tenants/{tenant_slug}/reset-sessions")
 @limiter.limit("6/minute")
 async def admin_tenant_reset_sessions(request: Request, tenant_slug: str):
