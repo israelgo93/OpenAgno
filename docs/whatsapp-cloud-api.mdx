@@ -1,0 +1,138 @@
+---
+title: WhatsApp Cloud API
+description: Official Meta Cloud API support in OpenAgno, including single-tenant and multi-tenant modes, encryption, and Meta Developer Console setup.
+---
+
+OpenAgno supports the official WhatsApp Cloud API (Meta Graph API) in two deployment models. Both reuse the Agno interface for message plumbing; what differs is **where the credentials live** and **how many tenants share the runtime**.
+
+## When to use each mode
+
+| Mode | Who owns credentials | Webhook URL | Storage | Best for |
+|------|---------------------|-------------|---------|----------|
+| Single-tenant | Operator, in `.env` | `/whatsapp/webhook` | Environment variables | Self-hosting, single operator account |
+| Multi-tenant | Each customer | `/whatsapp-cloud/{tenant_id}/webhook` | Encrypted row in Supabase (`whatsapp_cloud_channels`) | Multi-tenant hosting (OpenAgnoCloud) |
+
+## Single-tenant mode
+
+Enable in `workspace/config.yaml`:
+
+```yaml
+channels:
+  - whatsapp
+whatsapp:
+  mode: cloud_api  # or "dual" to serve QR at the same time
+```
+
+Set credentials in `.env`:
+
+```bash
+WHATSAPP_ACCESS_TOKEN=your_permanent_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_id
+WHATSAPP_VERIFY_TOKEN=pick_any_long_random_string
+WHATSAPP_APP_SECRET=your_app_secret   # optional but recommended
+```
+
+The CLI wizard (`openagno init`) asks for these values and writes them to `.env` automatically.
+
+### Meta Developer Console setup
+
+1. Open your Meta Developer App and add the **WhatsApp** product.
+2. Go to **WhatsApp &gt; Configuration &gt; Webhook**.
+3. Paste:
+   - **Callback URL**: `https://your.public.domain/whatsapp/webhook`
+   - **Verify Token**: exactly the value of `WHATSAPP_VERIFY_TOKEN`
+4. Subscribe to the `messages` field.
+5. From **API Setup** copy the Phone Number ID and a permanent Access Token.
+
+## Multi-tenant mode (OpenAgnoCloud)
+
+When OpenAgnoCloud is in front of the runtime, every customer can bring their own Meta App and their own Phone Number ID. Cloud handles credential capture in the customer onboarding, encrypts the secrets, and exposes a **per-tenant webhook URL** on the OSS runtime.
+
+### Shared secret key
+
+Generate a 32-byte key once and set it to the same value in both services:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+```bash
+# In OpenAgnoCloud (.env)
+CHANNEL_SECRETS_KEY=<the_generated_key>
+
+# In OpenAgno OSS (.env)
+CHANNEL_SECRETS_KEY=<exactly_the_same_key>
+```
+
+If this key is missing on OSS, the runtime does not mount `/whatsapp-cloud/*` and logs a warning at startup. Single-tenant `/whatsapp/webhook` keeps working.
+
+### Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/whatsapp-cloud/{tenant_id}/webhook` | Meta verification. Validates `hub.verify_token` against the stored (decrypted) value for that tenant and echoes `hub.challenge`. Marks `verified_at` in Supabase on success. |
+| `POST` | `/whatsapp-cloud/{tenant_id}/webhook` | Inbound event. Validates `X-Hub-Signature-256` using the tenant's App Secret, decodes the Meta payload, resolves the tenant's agent via `TenantLoader`, runs the agent, and replies over the Graph API using the tenant's Access Token. |
+
+`tenant_id` in the path is the Cloud `tenants.id` UUID. The full URL is shown to the customer in the onboarding page at `/onboarding/whatsapp-cloud`, alongside a freshly generated Verify Token, so they can paste both into Meta Developer Console in a single screen.
+
+### Credential storage
+
+Cloud stores credentials in the Supabase table `public.whatsapp_cloud_channels`:
+
+```sql
+create table public.whatsapp_cloud_channels (
+  tenant_id uuid primary key references public.tenants(id) on delete cascade,
+  phone_number_id text not null unique,
+  waba_id text null,
+  graph_api_version text not null default 'v21.0',
+  access_token_cipher text not null,
+  access_token_nonce text not null,
+  verify_token_cipher text not null,
+  verify_token_nonce text not null,
+  app_secret_cipher text null,
+  app_secret_nonce text null,
+  webhook_path text generated always as ('/whatsapp-cloud/' || tenant_id::text || '/webhook') stored,
+  verified_at timestamptz null,
+  last_event_at timestamptz null,
+  last_send_at timestamptz null,
+  last_error text null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+```
+
+Encryption is **AES-256-GCM**. Each secret column pair (`<field>_cipher`, `<field>_nonce`) stores ciphertext with the auth tag appended (last 16 bytes, Node `crypto.createCipheriv('aes-256-gcm')` convention) and the nonce separately, both base64-encoded. Only code holding `CHANNEL_SECRETS_KEY` can decrypt.
+
+RLS on the table lets only members of the owning organization read through Supabase auth; the OSS runtime reads by UUID with the Supabase service role via `psycopg` and the already-configured `DB_*` env vars.
+
+### Customer-facing onboarding (OpenAgnoCloud)
+
+When a new customer activates WhatsApp with `whatsapp.mode=cloud_api` or `dual`, `/api/onboarding/activate` redirects to `/onboarding/whatsapp-cloud`. The page provides:
+
+- A form for `Phone Number ID`, `WABA ID` (optional), `Access Token`, `App Secret` (optional), and `Graph API version` (default `v21.0`).
+- A **Probar token** action that calls Graph API `GET /{phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating` and reports whether the token works.
+- On save, a **Callback URL** and **Verify Token** displayed for the customer to paste into Meta Developer Console. If the Verify Token is not provided, Cloud generates one automatically (32 bytes hex).
+
+### Operational telemetry
+
+The runtime writes to three timestamps in the same row as events come in:
+
+- `verified_at` — set on a successful GET verification from Meta.
+- `last_event_at` — set on every POST (valid or not).
+- `last_send_at` — set when the runtime successfully sends a reply via Graph API.
+- `last_error` — cleared on success; set to a short error string when signature validation, tenant loading, agent execution, or `send_text` fails.
+
+These fields surface in the Cloud dashboard without ever exposing the underlying tokens.
+
+## Security notes
+
+- Tokens never touch disk or logs. They live in the Supabase row and are only loaded into memory for the duration of a request.
+- Multi-tenant webhook validates `X-Hub-Signature-256` with the tenant's own App Secret. Without an App Secret the runtime still accepts messages so the customer can complete the Meta handshake, but enabling signature validation is strongly recommended before going live.
+- The shared `CHANNEL_SECRETS_KEY` must not be rotated without re-encrypting existing rows. See the migration guidance in [security](/security) if you need to rotate it.
+
+## Troubleshooting
+
+- **Runtime starts but multi-tenant webhook returns 404** &mdash; OSS did not find `CHANNEL_SECRETS_KEY` in the environment. Check the startup log: you will see `WhatsApp Cloud API multi-tenant desactivado: falta CHANNEL_SECRETS_KEY`.
+- **Meta reports verification failed** &mdash; the Verify Token in Meta Developer Console does not match the value stored for that tenant, or `tenant_id` in the URL is wrong. Regenerate the token from `/onboarding/whatsapp-cloud` and paste it again.
+- **`401 invalid_signature` on every POST** &mdash; the App Secret in the customer form does not match the App Secret in Meta &gt; App &gt; Settings &gt; Basic. Correct the value in `/onboarding/whatsapp-cloud` and save again.
+- **`500 tenant_workspace_missing`** &mdash; the OSS cannot load the tenant's workspace from `TenantLoader`. This usually means the `tenants.runtime_slug` value in Cloud is not present on the OSS workspace store. Re-run workspace sync from the dashboard.

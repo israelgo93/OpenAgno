@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:security@datatensei.com
+    about: Report a security issue privately. Do not open a public issue.
+  - name: Documentation
+    url: https://docs.openagno.com
+    about: Full product documentation (English + Spanish).
+  - name: Discussion
+    url: https://github.com/OpenAgno/OpenAgno/discussions
+    about: Questions, ideas, and community conversation.

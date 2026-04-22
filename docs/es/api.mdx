@@ -56,8 +56,10 @@ Si defines `OPENAGNO_API_KEY`, estas rutas exigen el header `X-API-Key`.
 
 | Metodo | Ruta | Descripcion |
 |--------|------|-------------|
-| `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta |
-| `POST` | `/whatsapp/webhook` | Eventos de WhatsApp Cloud API |
+| `GET` | `/whatsapp/webhook` | Verificacion de webhook con Meta (un solo tenant, env vars) |
+| `POST` | `/whatsapp/webhook` | Eventos de WhatsApp Cloud API (un solo tenant) |
+| `GET` | `/whatsapp-cloud/{tenant_id}/webhook` | Verificacion multi-tenant; `tenant_id` es el UUID de `tenants.id` en Cloud |
+| `POST` | `/whatsapp-cloud/{tenant_id}/webhook` | Eventos multi-tenant con credenciales cifradas por tenant (requiere `CHANNEL_SECRETS_KEY`) |
 
 ## Rutas nativas de AgentOS
 

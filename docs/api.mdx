@@ -54,10 +54,19 @@ If you define `OPENAGNO_API_KEY`, these routes require the `X-API-Key` header.
 
 ## WhatsApp Cloud API
 
+Single-tenant (operator-managed via env vars):
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/whatsapp/webhook` | Meta webhook verification |
 | `POST` | `/whatsapp/webhook` | WhatsApp Cloud API events |
+
+Multi-tenant (each tenant has its own credentials encrypted in Supabase). Requires `CHANNEL_SECRETS_KEY` shared with OpenAgnoCloud:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/whatsapp-cloud/{tenant_id}/webhook` | Meta webhook verification for a specific tenant (`tenants.id` UUID) |
+| `POST` | `/whatsapp-cloud/{tenant_id}/webhook` | Inbound events for that tenant; validates `X-Hub-Signature-256` with the tenant's App Secret and responds via Graph API with the tenant's Access Token |
 
 ## AgentOS-native routes
 

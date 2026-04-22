@@ -1,6 +1,20 @@
 # Contributing to OpenAgno
 
-Thanks for contributing to OpenAgno.
+Thanks for helping move OpenAgno forward. This guide captures what we expect from a healthy contribution so reviews go fast and the runtime stays coherent with the docs and with OpenAgnoCloud.
+
+## Scope of the project
+
+OpenAgno is the declarative **runtime** for Agno-based agents. It ships:
+
+- a CLI (`openagno`) for workspace lifecycle, validation and deploy helpers
+- a FastAPI + AgentOS runtime
+- packaged workspace templates
+- channel integrations (WhatsApp Cloud API, WhatsApp QR via Baileys bridge, Slack, Telegram, AG-UI, A2A)
+- multi-tenant provisioning with tenant-scoped workspaces and knowledge filters
+- PgVector-backed knowledge ingestion and semantic search
+- MCP client and server
+
+OpenAgnoCloud (hosted SaaS) lives in a separate repository and consumes **only** the public OSS HTTP contract. Contributions here should not tie the runtime to Cloud-specific concerns.
 
 ## Development setup
 
@@ -14,29 +28,77 @@ openagno validate
 pytest -q
 ```
 
-## Contribution guidelines
+Python >= 3.10. Agno `2.5.x`.
 
-- Keep pull requests focused on one change.
-- Add or update tests for behavior changes.
-- Update docs for user-facing changes.
-- Follow existing formatting and structure.
-- Keep secrets out of version control and use `.env` for local credentials.
+### Optional bridges and databases
 
-## Reporting issues
+If your change touches the WhatsApp QR bridge:
 
-Use GitHub Issues and include:
+```bash
+cd bridges/whatsapp-qr
+npm install
+node --check index.js
+```
 
-- reproduction steps
-- expected behavior
-- actual behavior
-- `openagno --version`
-- Python version and operating system
+If your change touches knowledge / vector search, run a local Postgres with PgVector (the `docker-compose.yml` in the repo ships `pgvector/pgvector:pg17`).
 
-## Pull requests
+## Before you open a PR
 
-- Branch from `main`.
-- Run tests before opening the PR.
-- Describe the scope and impact clearly.
-- Link the relevant issue or discussion when available.
+- `ruff check` is clean
+- `pytest -q` passes
+- workspace templates still validate with `openagno validate`
+- docs are updated together with the code when a public contract changes (see the [documentation policy](#documentation-policy) below)
+- no secret material committed (`.env` is ignored; use `.env.example` for the required shape)
 
-By contributing, you agree that your contributions will be licensed under Apache 2.0.
+## Documentation policy
+
+The Mintlify docs under `docs/` are the public source of truth for operators and for OpenAgnoCloud. When you change any of the following, update the related docs in the same PR:
+
+| Code change | Docs to update |
+|-------------|----------------|
+| New or changed HTTP route | `docs/api.mdx`, `docs/es/api.mdx` |
+| New channel or mode | `docs/channels.mdx`, `docs/es/channels.mdx`, and a dedicated page if the surface is large (see `docs/whatsapp-cloud-api.mdx` for the pattern) |
+| New env var or secret storage | `docs/security.mdx`, `docs/deployment.mdx`, `.env.example` |
+| New template | `docs/workspace/templates.mdx` |
+| New CLI command | `docs/cli.mdx` |
+| Runtime boundary (contract with Cloud) | `docs/api.mdx` and the `## Runtime boundary` section in `OpenAgnoCloud/README.md` (keep them aligned) |
+
+The navigation index for docs lives in `docs/docs.json`. Add new pages there in the appropriate group and mirror them in the `es` tree when relevant.
+
+## Code style
+
+- Indent with tabs. Match the existing file style.
+- Prefer small, direct changes. Avoid speculative abstractions.
+- Type annotations for any new Python function. `from __future__ import annotations` at the top of new modules.
+- Don't add narration comments (`# increment x by one`). Comments should explain intent, trade-offs, or non-obvious constraints.
+- Log lines that can fire often should stay at `info` or lower. Use `warning` for recoverable problems and `error` for real failures.
+
+## Tests
+
+- Python: `pytest` with fixtures in `tests/`. Mock the network layer (`httpx`, `psycopg`) instead of using real services; see `tests/test_whatsapp_cloud.py` for the pattern.
+- Ruff: `ruff check .` should be clean.
+- If a change touches multi-tenant behavior, add a test covering the tenant resolution path so we don't regress tenant isolation.
+
+## Adding a new channel
+
+1. Decide whether it fits the current Agno interface (most do). If yes, activate it in `gateway.py` under the existing `if "<channel>" in channels:` block. If no, add a module under `openagno/channels/<name>.py` following the `whatsapp_cloud.py` pattern.
+2. Document activation, env vars, and public routes in `docs/channels.mdx` and mirror the changes to `docs/es/channels.mdx`.
+3. If the channel requires secrets shared with OpenAgnoCloud, document the env var and the Supabase persistence in `docs/security.mdx`.
+4. Add at least one test covering the happy path and one covering signature or auth rejection.
+
+## Commit messages
+
+- One focused change per commit.
+- English or Spanish, both acceptable in this repository. Be descriptive: explain *why*, not just *what*.
+- Group type prefixes used in history: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`. Optional scope in parentheses (`feat(channels): ...`).
+- Reference related issues when available.
+
+## Reporting bugs and requesting features
+
+Use GitHub Issues with the templates under `.github/ISSUE_TEMPLATE/`. The templates ask for the info we need to reproduce and triage without a round-trip.
+
+Security issues go to `security@datatensei.com` directly, never to the public tracker. See [`SECURITY.md`](./SECURITY.md).
+
+## License
+
+By contributing, you agree that your contributions will be licensed under Apache 2.0 (see [`LICENSE`](./LICENSE)).

@@ -9,7 +9,8 @@ OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actua
 
 | Canal o protocolo | Activacion | Requisitos |
 |-------------------|------------|------------|
-| WhatsApp Cloud API | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | credenciales de Meta |
+| WhatsApp Cloud API (un solo tenant) | `channels: [whatsapp]` + `whatsapp.mode: cloud_api` | variables `WHATSAPP_*` |
+| WhatsApp Cloud API (multi-tenant via Cloud) | Onboarding de Cloud + fila en `whatsapp_cloud_channels` de Supabase | `CHANNEL_SECRETS_KEY` compartida con Cloud |
 | WhatsApp QR | `channels: [whatsapp]` + `whatsapp.mode: qr_link` | bridge Node opcional |
 | Slack | `channels: [slack]` | `SLACK_TOKEN`, `SLACK_SIGNING_SECRET` |
 | Telegram | `channels: [telegram]` | `TELEGRAM_TOKEN` |
@@ -18,6 +19,12 @@ OpenAgno sigue la superficie de interfaces expuesta por Agno en el runtime actua
 
 ## WhatsApp Cloud API
 
+OpenAgno soporta dos modos complementarios de Cloud API.
+
+### Un solo tenant (self-hosting, gestionado por el operador)
+
+Si auto-hospedas OpenAgno para una unica cuenta de operador, define las credenciales como variables de entorno. El runtime monta una sola interfaz Agno `Whatsapp` en `/whatsapp/webhook` que usa estos valores.
+
 ```bash
 WHATSAPP_ACCESS_TOKEN=tu_token
 WHATSAPP_PHONE_NUMBER_ID=tu_phone_id
@@ -25,10 +32,31 @@ WHATSAPP_VERIFY_TOKEN=tu_verify_token
 WHATSAPP_APP_SECRET=tu_app_secret
 ```
 
-Rutas relevantes:
+Rutas:
 
 - `GET /whatsapp/webhook`
 - `POST /whatsapp/webhook`
+
+Este es el modo que el wizard del CLI configura cuando eliges "Cloud API" en `openagno init`.
+
+### Multi-tenant (OpenAgno Cloud)
+
+Cuando el runtime esta desplegado detras de OpenAgnoCloud, cada tenant puede traer su propia cuenta Meta con su propio Access Token, Phone Number ID, Verify Token y App Secret opcional. Cloud guarda estas credenciales cifradas (AES-256-GCM) en la tabla `whatsapp_cloud_channels` de Supabase y el runtime OSS expone un webhook dedicado por tenant.
+
+Requiere una clave de 32 bytes en base64 compartida entre Cloud y OSS:
+
+```bash
+CHANNEL_SECRETS_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
+```
+
+Rutas (por tenant, donde `tenant_id` es el UUID de `tenants.id` en Cloud):
+
+- `GET /whatsapp-cloud/{tenant_id}/webhook` — verificacion Meta
+- `POST /whatsapp-cloud/{tenant_id}/webhook` — eventos entrantes
+
+El cliente pega esta URL y el Verify Token generado en Meta Developer Console &gt; App &gt; WhatsApp &gt; Configuration &gt; Webhook, y se suscribe al campo `messages`. El runtime carga las credenciales del tenant, las descifra con `CHANNEL_SECRETS_KEY`, valida `X-Hub-Signature-256`, resuelve el agente del tenant via `TenantLoader`, ejecuta y responde con Graph API usando el Access Token del propio tenant.
+
+Si `CHANNEL_SECRETS_KEY` no esta definida, el webhook multi-tenant no se monta y el runtime sigue sirviendo el `/whatsapp/webhook` de un solo tenant desde Agno.
 
 ## Desarrollo local sin dominio
 

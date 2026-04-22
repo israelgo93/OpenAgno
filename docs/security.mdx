@@ -30,7 +30,7 @@ En produccion:
 
 ## WhatsApp Cloud API
 
-Para `POST /whatsapp/webhook`:
+### Single-tenant `POST /whatsapp/webhook`
 
 - la firma se valida con `WHATSAPP_APP_SECRET`,
 - el dedup por `message_id` ocurre solo si la firma ya paso,
@@ -42,6 +42,23 @@ Solo para desarrollo local puedes usar:
 ```bash
 WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
 ```
+
+### Multi-tenant `POST /whatsapp-cloud/{tenant_id}/webhook`
+
+- Las credenciales por tenant (`access_token`, `verify_token`, `app_secret`) se cifran con **AES-256-GCM** usando una clave maestra en la variable `CHANNEL_SECRETS_KEY` (32 bytes base64). Esta clave debe ser identica en el proceso OSS y en OpenAgnoCloud para que ambos lados puedan cifrar y descifrar.
+- El cipher sigue el formato de Node `crypto.createCipheriv('aes-256-gcm')`: ciphertext + auth tag (16 bytes finales) en base64, con nonce en base64 almacenado aparte (`*_cipher` y `*_nonce`).
+- Si el tenant tiene `app_secret` registrado, cada `POST` valida `X-Hub-Signature-256` con ese secreto; si no coincide el runtime responde `401 invalid_signature`.
+- Si el tenant aun no registro `app_secret`, el webhook acepta mensajes sin verificar firma (solo recomendado mientras completas la configuracion inicial con Meta).
+- El Verify Token tambien se cifra en Supabase; al hacer `GET /whatsapp-cloud/{tenant_id}/webhook` se descifra, se compara contra `hub.verify_token` con `hmac.compare_digest` y en exito actualiza `verified_at` en la fila del tenant.
+- Los tokens nunca se escriben a disco ni a los logs del runtime; se cargan en memoria por request y se descartan al terminar la respuesta.
+
+Para generar la clave maestra:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Si `CHANNEL_SECRETS_KEY` no esta definida, el runtime OSS no monta `/whatsapp-cloud/*` y registra una advertencia al arrancar.
 
 ## Rate limiting
 

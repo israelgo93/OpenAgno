@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new capability or improvement for OpenAgno
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user problem that the feature should solve. Avoid prescribing the solution in this field.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What surface should change (CLI, HTTP, workspace config, template, docs)? Reference related routes or modules.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention any workaround or competing approach you already evaluated.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Impact area
+      options:
+        - label: CLI
+        - label: Runtime (FastAPI / AgentOS)
+        - label: Channels
+        - label: Knowledge / PgVector
+        - label: MCP
+        - label: Templates
+        - label: Docs
+        - label: Deployment (systemd / docker)
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and discussions for duplicates
+          required: true

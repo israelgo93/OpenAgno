@@ -201,6 +201,11 @@ WhatsApp modes currently supported by the runtime:
 
 The runtime supports QR-based WhatsApp linking through the optional Baileys bridge and the `/whatsapp-qr/*` routes. OpenAgno Cloud now exposes this as a first-class customer flow: after onboarding activation with `qr_link` mode, the customer sees a QR scanner page that polls the bridge and redirects to the dashboard once WhatsApp is connected.
 
+For WhatsApp Cloud API (the official Meta Graph API), the runtime supports two deployment models:
+
+- **Single-tenant**: driven by environment variables (`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`). The runtime mounts a single `/whatsapp/webhook` via Agno. This is what the CLI wizard configures.
+- **Multi-tenant (OpenAgnoCloud)**: each tenant brings its own Meta credentials. Cloud stores them encrypted (AES-256-GCM) in the Supabase `whatsapp_cloud_channels` table and the OSS runtime exposes a webhook per tenant at `GET/POST /whatsapp-cloud/{tenant_id}/webhook`. Requires `CHANNEL_SECRETS_KEY` (a base64-encoded 32-byte key) to be set to the same value in Cloud and OSS so both can encrypt and decrypt.
+
 `OpenAgnoCloud` maps the hosted workspace contract into this existing runtime surface through `whatsapp.mode` (set to `dual` for simultaneous Cloud API and QR Link support), without adding new APIs on the OSS side.
 
 Operational notes for the tenant contract:

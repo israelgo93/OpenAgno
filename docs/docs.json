@@ -71,6 +71,7 @@
 						"group": "Integrations",
 						"pages": [
 							"ide-integration",
+							"whatsapp-cloud-api",
 							"whatsapp-tunnel"
 						]
 					},
