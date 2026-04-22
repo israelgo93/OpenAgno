@@ -371,6 +371,8 @@ Expected results:
 
 The repository content reflects the `1.3.0` closeout work. Publishing to PyPI remains a separate operational step triggered manually by the maintainer when the `v1.3.0` wheel is ready to go live.
 
+> 📋 Last verified by Magno Agent on April 22, 2026.
+
 ## License
 
 Apache 2.0.
