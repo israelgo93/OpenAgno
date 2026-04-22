@@ -50,6 +50,15 @@ function createSessionState(slug) {
 		retries: 0,
 		processed: new Map(),
 		connecting: false,
+		// Circuit breaker para conflicto 'replaced'. Cuando WhatsApp devuelve
+		// DisconnectReason.connectionReplaced repetidas veces es sintoma de
+		// creds zombies o de otro dispositivo vinculado compitiendo; en ese
+		// caso NO debemos reintentar en bucle porque llenamos el log y nunca
+		// se estabiliza el socket. Tras 3 eventos en 30s limpiamos creds y
+		// exigimos re-vinculacion manual desde el dashboard.
+		replacedEvents: [],
+		needsRelink: false,
+		lastErrorCode: null,
 	};
 }
 
@@ -149,10 +158,46 @@ async function connectTenant(slug) {
 
 			if (connection === 'close') {
 				const statusCode = lastDisconnect?.error?.output?.statusCode;
-				const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 				session.status = 'disconnected';
 				session.sock = null;
+				session.lastErrorCode = statusCode ?? null;
 
+				// Conflicto 'replaced' (440 / 515 segun version Baileys):
+				// circuit breaker para evitar el loop infinito que vimos con
+				// creds zombies tras desvincular y re-vincular.
+				if (statusCode === DisconnectReason.connectionReplaced) {
+					const now = Date.now();
+					session.replacedEvents = session.replacedEvents.filter(
+						(t) => now - t < 30_000,
+					);
+					session.replacedEvents.push(now);
+					if (session.replacedEvents.length >= 3) {
+						console.log(
+							`[${slug}] Conflicto 'replaced' persistente (${session.replacedEvents.length} en 30s). ` +
+							'Limpiando creds y exigiendo re-vinculacion manual desde el dashboard.',
+						);
+						session.status = 'needs_relink';
+						session.needsRelink = true;
+						session.retries = 0;
+						session.replacedEvents = [];
+						clearSessionDir(slug);
+						// No reconectamos. El dashboard (o el operador) tiene que
+						// llamar POST /sessions/:slug para generar un QR nuevo.
+						return;
+					}
+					session.retries += 1;
+					console.log(
+						`[${slug}] Conflicto 'replaced' (${session.replacedEvents.length}/3 en 30s). ` +
+						'Reintento en 2s.',
+					);
+					setTimeout(
+						() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)),
+						2000,
+					);
+					return;
+				}
+
+				const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 				if (shouldReconnect) {
 					session.retries += 1;
 					const delay = Math.min(session.retries * 2000, 10_000);
@@ -281,6 +326,8 @@ function describeSession(session) {
 		status: session.status,
 		has_qr: Boolean(session.currentQR),
 		retries: session.retries,
+		needs_relink: Boolean(session.needsRelink),
+		last_error_code: session.lastErrorCode ?? null,
 	};
 }
 
@@ -308,6 +355,14 @@ app.get('/sessions', (_req, res) => {
 app.post('/sessions/:tenantSlug', async (req, res) => {
 	const slug = normalizeSlug(req.params.tenantSlug);
 	if (!slug) return res.status(400).json({ error: 'invalid_tenant_slug' });
+	// Si el tenant estaba bloqueado por circuit breaker de 'replaced',
+	// resetea el flag: el usuario pide explicitamente re-vincular.
+	const existing = sessions.get(slug);
+	if (existing) {
+		existing.needsRelink = false;
+		existing.replacedEvents = [];
+		existing.retries = 0;
+	}
 	try {
 		const session = await connectTenant(slug);
 		return res.json(describeSession(session));
@@ -372,6 +427,9 @@ app.post('/sessions/:tenantSlug/restart', async (req, res) => {
 	const { slug, session } = ctx;
 	session.retries = 0;
 	session.status = 'disconnected';
+	session.needsRelink = false;
+	session.replacedEvents = [];
+	session.lastErrorCode = null;
 	if (session.sock) {
 		try { session.sock.end(); } catch { /* ignore */ }
 	}
