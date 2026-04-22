@@ -344,14 +344,14 @@ Spanish pages are published under `docs/es/`.
 
 ## Release and validation
 
-Local verification used for the current `v1.2.1` closeout:
+Local verification used for the current `v1.3.0` closeout:
 
 ```bash
 source .venv/bin/activate
 pytest -q
 python -m build
 ruff check
-python -m pip install --force-reinstall --no-deps dist/openagno-1.2.1-py3-none-any.whl
+python -m pip install --force-reinstall --no-deps dist/openagno-1.3.0-py3-none-any.whl
 python -c "import openagno; print(openagno.__version__)"
 ```
 
@@ -360,11 +360,11 @@ Expected results:
 - test suite passes
 - `ruff check` is clean
 - wheel build succeeds
-- installed package reports `1.2.1`
+- installed package reports `1.3.0`
 
 ## Current release posture
 
-The repository content reflects the `1.2.1` closeout work, but publishing to PyPI remains a separate operational step if the package has not been uploaded yet in the target account.
+The repository content reflects the `1.3.0` closeout work. Publishing to PyPI remains a separate operational step triggered manually by the maintainer when the `v1.3.0` wheel is ready to go live.
 
 ## License
 

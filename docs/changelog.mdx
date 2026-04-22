@@ -3,6 +3,43 @@ title: Changelog
 description: Historial resumido de versiones públicas y milestones del producto.
 ---
 
+## v1.3.0
+
+Runtime multi-tenant real con cache per-tenant, BYOK y audio por Whisper.
+Ningún cambio es breaking para self-hosters single-tenant: `load_workspace()`,
+la CLI y los endpoints `/tenants/*` siguen funcionando igual.
+
+- `openagno/core/tenant_loader.py`: nuevo `TenantLoader` con cache LRU
+  (variable `OPENAGNO_TENANT_CACHE_SIZE`, default 32) que resuelve el
+  workspace del tenant en cada request sin reiniciar el proceso.
+- `loader.load_workspace_from_dir(path)` parametrizable; `load_workspace()`
+  queda como wrapper compatible.
+- `_build_single_model` y `build_model` aceptan credenciales BYOK del tenant
+  (`api_key`, `aws_access_key_id`, `aws_secret_access_key`) y las reenvían
+  como kwargs al modelo Agno. Si no vienen, Agno sigue usando `os.environ`.
+- `gateway.py`: `/whatsapp-qr/incoming` ahora exige `tenant_slug` y rutea al
+  agente correspondiente via `TenantLoader`. Las rutas `/whatsapp-qr/*` se
+  montan siempre, independientes del modo del workspace global.
+- Audio WhatsApp: cuando el mensaje es de tipo audio y el modelo del tenant
+  no soporta audio nativo, el gateway transcribe con Whisper usando la
+  `api_key` del tenant (fallback a `OPENAI_API_KEY` del server) antes de
+  pasar el texto al agente.
+- `/admin/health?tenant_slug=X` devuelve el modelo real del tenant
+  (provider, id, aws_region) sin exponer api_key ni aws_secret_*.
+- `/admin/tenants/{slug}/reload` y `/tenants/{id}/reload` nuevos: invalidan
+  el cache del `TenantLoader` tras cambios en el workspace.
+- `bridges/whatsapp-qr/`: bridge Baileys multi-sesión con endpoints
+  `/sessions/:tenantSlug/*`. Cada tenant tiene su propio directorio de
+  credenciales y evento de reconexión automática tras `loggedOut`.
+- `openagno/core/workspace_store.py::write_config` derrama `instructions`
+  y `self_knowledge` como archivos `.md` separados en el workspace del
+  tenant (el loader lee esos archivos, no solo `config.yaml`).
+- `OS_SECURITY_KEY` / `JWT_VERIFICATION_KEY` se loguean al arrancar para
+  dejar claro el modo de autenticación del endpoint AgentOS.
+- Tests: 6 nuevos en `tests/test_byok_model.py` (forward de credenciales
+  por proveedor) + 9 en `tests/test_tenant_loader.py` (cache LRU, reload,
+  eviction). Suite total: 75 passing.
+
 ## v1.2.1
 
 - closeout técnico del OSS después de la separación de repos
