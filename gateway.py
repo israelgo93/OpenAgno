@@ -317,11 +317,11 @@ async def lifespan(app: FastAPI):
 
 
 def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
-	"""Monta rutas para WhatsApp QR bridge (DAT-240).
+	"""Monta rutas para WhatsApp QR bridge.
 
-	Las rutas resuelven el agente a ejecutar por tenant:
-	- tenant_slug="default" -> agente del operador con wrapper STT/TTS/Fallback
-	- tenant_slug=otro      -> agente del tenant cargado via tenant_loader
+	El runtime es multi-tenant: todas las rutas exigen un `tenant_slug` explicito.
+	No existe fallback al tenant del operador; un cliente que no envie el slug
+	recibe 400.
 	"""
 	import httpx
 	from openagno.core.tenant import DEFAULT_TENANT, normalize_tenant_id
@@ -330,8 +330,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 		return f"{bridge_url}/sessions/{slug}{suffix}"
 
 	@app.get("/whatsapp-qr/status")
-	async def wa_qr_status(tenant_slug: str = DEFAULT_TENANT):
-		"""Estado de la conexión QR para un tenant."""
+	async def wa_qr_status(tenant_slug: str):
 		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
@@ -341,13 +340,12 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 			return {"status": "bridge_unreachable", "error": str(e)}
 
 	@app.get("/whatsapp-qr/code")
-	async def wa_qr_code(tenant_slug: str = DEFAULT_TENANT):
+	async def wa_qr_code(tenant_slug: str):
 		"""Pagina HTML con QR para escanear desde el navegador."""
 		from fastapi.responses import HTMLResponse
 		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
-				# Asegurar que la sesion existe (idempotente)
 				await client.post(_session_url(slug, ""))
 				resp = await client.get(_session_url(slug, "/qr"))
 				data = resp.json()
@@ -375,8 +373,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 				f"<h2>Bridge no disponible</h2><p>{e}</p></body></html>", status_code=502)
 
 	@app.get("/whatsapp-qr/code/json")
-	async def wa_qr_code_json(tenant_slug: str = DEFAULT_TENANT):
-		"""QR como JSON (para integraciones programaticas)."""
+	async def wa_qr_code_json(tenant_slug: str):
 		slug = normalize_tenant_id(tenant_slug)
 		try:
 			async with httpx.AsyncClient() as client:
@@ -388,10 +385,19 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 
 	@app.post("/whatsapp-qr/incoming")
 	async def wa_qr_incoming(request: dict):
-		"""Recibe mensajes del bridge y los procesa con el agente del tenant correspondiente."""
+		"""Recibe mensajes del bridge y los procesa con el agente del tenant correspondiente.
+
+		El payload DEBE incluir `tenant_slug`. El bridge multi-sesion siempre lo
+		envia (ver `bridges/whatsapp-qr/index.js`). Un payload sin slug se trata
+		como request invalido.
+		"""
 		from agno.media import Audio as AgnoAudio, Image as AgnoImage
 
-		tenant_slug = normalize_tenant_id(request.get("tenant_slug"))
+		raw_slug = request.get("tenant_slug")
+		if not raw_slug or not isinstance(raw_slug, str) or not raw_slug.strip():
+			logger.warning("QR Bridge payload sin tenant_slug; request rechazado")
+			raise HTTPException(status_code=400, detail="missing tenant_slug")
+		tenant_slug = normalize_tenant_id(raw_slug)
 		from_jid = request.get("from", "")
 		message_id = request.get("message_id", "")
 		text = request.get("text", "")
@@ -447,7 +453,7 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 
 			tenant_loader = app.state.tenant_loader
 			if tenant_slug == DEFAULT_TENANT:
-				# Agente operador con wrapper STT/TTS/Fallback
+				# Operador: usa el agente global con wrapper STT/TTS/Fallback.
 				response = await _qr_agent_arun(text, **arun_kwargs)
 			else:
 				try:

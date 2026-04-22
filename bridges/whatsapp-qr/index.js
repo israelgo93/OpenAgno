@@ -28,7 +28,6 @@ const SESSION_DIR = path.resolve(process.env.SESSION_DIR || './session');
 const PORT = Number(process.env.BRIDGE_PORT || 3001);
 const MAX_RETRIES = 5;
 const DEDUP_TTL_MS = 60_000;
-const DEFAULT_TENANT = 'default';
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
@@ -71,32 +70,6 @@ function sessionDirFor(slug) {
 
 function hasPersistedCreds(slug) {
 	return fs.existsSync(path.join(sessionDirFor(slug), 'creds.json'));
-}
-
-/**
- * Migra la estructura vieja (SESSION_DIR/*.json) a la nueva (SESSION_DIR/default/*.json)
- * Solo ocurre una vez al arrancar la nueva version del bridge.
- */
-function migrateLegacySessionLayout() {
-	if (!fs.existsSync(SESSION_DIR)) {
-		fs.mkdirSync(SESSION_DIR, { recursive: true });
-		return;
-	}
-	const credsPath = path.join(SESSION_DIR, 'creds.json');
-	if (!fs.existsSync(credsPath)) return;
-
-	const targetDir = sessionDirFor(DEFAULT_TENANT);
-	console.log(`Migrando sesion legacy a ${targetDir} (tenant "${DEFAULT_TENANT}")`);
-	fs.mkdirSync(targetDir, { recursive: true });
-
-	for (const entry of fs.readdirSync(SESSION_DIR)) {
-		const full = path.join(SESSION_DIR, entry);
-		const stat = fs.statSync(full);
-		if (stat.isFile()) {
-			fs.renameSync(full, path.join(targetDir, entry));
-		}
-	}
-	console.log('Migracion completada.');
 }
 
 function isProcessed(session, msgId) {
@@ -424,80 +397,20 @@ app.delete('/sessions/:tenantSlug', async (req, res) => {
 	res.json({ status: 'deleted', tenant_slug: slug });
 });
 
-// ===== Endpoints legacy (retrocompatibilidad con el tenant operador "default") =====
-
-app.get('/status', (_req, res) => {
-	const session = sessions.get(DEFAULT_TENANT) || createSessionState(DEFAULT_TENANT);
-	res.json({ status: session.status, has_qr: Boolean(session.currentQR), retries: session.retries });
-});
-
-app.get('/qr', async (_req, res) => {
-	const session = sessions.get(DEFAULT_TENANT);
-	if (!session || !session.currentQR) {
-		return res.json({ status: session?.status || 'disconnected', qr: null });
-	}
-	const qrDataUrl = await QRCode.toDataURL(session.currentQR);
-	res.json({ status: 'waiting_qr', qr: qrDataUrl });
-});
-
-app.get('/qr/image', async (_req, res) => {
-	const session = sessions.get(DEFAULT_TENANT);
-	if (!session || !session.currentQR) {
-		return res.status(404).json({ error: 'QR no disponible', status: session?.status || 'disconnected' });
-	}
-	const qrBuffer = await QRCode.toBuffer(session.currentQR, { width: 300, margin: 2 });
-	res.type('image/png').send(qrBuffer);
-});
-
-app.post('/send', async (req, res) => {
-	const session = sessions.get(DEFAULT_TENANT);
-	const { to, text } = req.body || {};
-	if (!session?.sock || session.status !== 'connected') {
-		return res.status(503).json({ error: 'WhatsApp no conectado' });
-	}
-	try {
-		const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
-		await session.sock.sendMessage(jid, { text });
-		res.json({ status: 'sent' });
-	} catch (err) {
-		res.status(500).json({ error: err.message });
-	}
-});
-
-app.post('/restart', async (_req, res) => {
-	const session = sessions.get(DEFAULT_TENANT) || createSessionState(DEFAULT_TENANT);
-	sessions.set(DEFAULT_TENANT, session);
-	session.retries = 0;
-	session.status = 'disconnected';
-	if (session.sock) {
-		try { session.sock.end(); } catch { /* ignore */ }
-	}
-	clearSessionDir(DEFAULT_TENANT);
-	try {
-		await connectTenant(DEFAULT_TENANT);
-		res.json({ status: 'restarting' });
-	} catch (err) {
-		res.status(500).json({ error: err?.message || 'restart_failed' });
-	}
-});
-
 // ===== Bootstrap =====
 
 async function bootstrap() {
-	migrateLegacySessionLayout();
-
-	const persistedSlugs = [];
-	if (fs.existsSync(SESSION_DIR)) {
-		for (const entry of fs.readdirSync(SESSION_DIR, { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const slug = normalizeSlug(entry.name);
-			if (!slug) continue;
-			if (hasPersistedCreds(slug)) persistedSlugs.push(slug);
-		}
+	if (!fs.existsSync(SESSION_DIR)) {
+		fs.mkdirSync(SESSION_DIR, { recursive: true });
 	}
 
-	// Siempre preparamos "default" aunque no tenga creds: sera el QR del operador
-	if (!persistedSlugs.includes(DEFAULT_TENANT)) persistedSlugs.unshift(DEFAULT_TENANT);
+	const persistedSlugs = [];
+	for (const entry of fs.readdirSync(SESSION_DIR, { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const slug = normalizeSlug(entry.name);
+		if (!slug) continue;
+		if (hasPersistedCreds(slug)) persistedSlugs.push(slug);
+	}
 
 	for (const slug of persistedSlugs) {
 		connectTenant(slug).catch((err) => console.error(`[${slug}] bootstrap fallo:`, err));
