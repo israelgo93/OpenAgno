@@ -934,6 +934,21 @@ agent_os = AgentOS(
 	**_hooks_kwargs,
 )
 
+# Log del modo de seguridad que Agno aplicara a los endpoints AgentOS.
+# - OS_SECURITY_KEY activa bearer auth simple sobre TODO el app.
+# - JWT_VERIFICATION_KEY + authorization=True (no habilitado aqui) activa RBAC.
+# Ver: https://docs.agno.com/agent-os/security/overview
+_os_security_key_present = bool(os.getenv("OS_SECURITY_KEY"))
+_jwt_verify_present = bool(os.getenv("JWT_VERIFICATION_KEY"))
+if _os_security_key_present:
+	logger.info("AgentOS Security Key activa (OS_SECURITY_KEY). Todas las rutas AgentOS exigen Authorization: Bearer <key>.")
+elif _jwt_verify_present:
+	logger.info("AgentOS JWT verification key presente (JWT_VERIFICATION_KEY). RBAC se aplicara si authorization=True.")
+else:
+	logger.warning(
+		"AgentOS corriendo SIN autenticacion. Configura OS_SECURITY_KEY en .env para proteger el endpoint antes de publicarlo en os.agno.com."
+	)
+
 # === F7 — 7.5: Alerta de token WhatsApp expirado ===
 _wa_auth_failed = False
 
