@@ -54,7 +54,10 @@ class WorkspaceTools(Toolkit):
                 TenantLoader.reload(slug). Si es None se cae al mecanismo
                 legacy (.reload_requested) que reinicia el daemon global.
         """
-        super().__init__(name="workspace_tools")
+        # El Toolkit se identifica como "self_customization" en Agno para que el
+        # LLM no infiera un rol tipo "workspace admin" al ver la lista de tools.
+        # El archivo / clase siguen llamandose workspace_tools por compat.
+        super().__init__(name="self_customization")
         self._workspace_dir = (workspace_dir or WORKSPACE_DIR).resolve()
         self._tenant_slug = tenant_slug
         self._on_reload = on_reload

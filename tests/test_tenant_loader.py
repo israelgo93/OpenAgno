@@ -157,3 +157,67 @@ def test_workspace_store_write_config_emits_md_files(tmp_path: Path):
 	assert config["model"]["id"] == "gpt-4.1-mini"
 	assert (tmp_path / "acme" / "workspace" / "instructions.md").read_text(encoding="utf-8") == "Responde siempre en espanol."
 	assert (tmp_path / "acme" / "workspace" / "self_knowledge.md").read_text(encoding="utf-8") == "Soy el agente oficial de Acme."
+
+
+def test_workspace_store_write_config_spills_tools_and_mcp_yaml(tmp_path: Path):
+	"""Fix multi-tenant 2026-04-22: tools_yaml y mcp_yaml deben volcarse
+	a archivos separados (no quedarse dentro del config.yaml)."""
+	import yaml
+
+	store = WorkspaceStore(base_dir=tmp_path)
+	(tmp_path / "acme" / "workspace").mkdir(parents=True)
+
+	tools_yaml = {
+		"builtin": [{"name": "duckduckgo", "enabled": True}],
+		"optional": [{"name": "workspace", "enabled": True}],
+		"custom": [],
+	}
+	mcp_yaml = {
+		"servers": [
+			{"name": "agno_docs", "transport": "streamable-http", "url": "https://docs.agno.com/mcp", "enabled": True}
+		],
+		"expose": {"enabled": False},
+	}
+
+	config = store.write_config(
+		"acme",
+		{
+			"agent": {"name": "Acme"},
+			"model": {"provider": "openai", "id": "gpt-4.1-mini"},
+			"tools_yaml": tools_yaml,
+			"mcp_yaml": mcp_yaml,
+		},
+	)
+
+	# Archivos separados creados
+	tools_file = tmp_path / "acme" / "workspace" / "tools.yaml"
+	mcp_file = tmp_path / "acme" / "workspace" / "mcp.yaml"
+	assert tools_file.exists()
+	assert mcp_file.exists()
+	assert yaml.safe_load(tools_file.read_text()) == tools_yaml
+	assert yaml.safe_load(mcp_file.read_text()) == mcp_yaml
+
+	# config.yaml NO debe contener las claves tools_yaml / mcp_yaml
+	config_file = tmp_path / "acme" / "workspace" / "config.yaml"
+	config_on_disk = yaml.safe_load(config_file.read_text())
+	assert "tools_yaml" not in config_on_disk
+	assert "mcp_yaml" not in config_on_disk
+	# Pero si debe contener el resto
+	assert config_on_disk["agent"]["name"] == "Acme"
+
+	# El dict devuelto tambien queda sin las claves "meta"
+	assert "tools_yaml" not in config
+	assert "mcp_yaml" not in config
+
+
+def test_workspace_store_tools_yaml_no_escrito_si_vacio(tmp_path: Path):
+	"""Si tools_yaml / mcp_yaml no vienen, no se tocan los archivos existentes."""
+	store = WorkspaceStore(base_dir=tmp_path)
+	ws = tmp_path / "acme" / "workspace"
+	ws.mkdir(parents=True)
+	(ws / "tools.yaml").write_text("builtin: [{name: pre-existente}]\n", encoding="utf-8")
+
+	store.write_config("acme", {"agent": {"name": "Acme"}})
+
+	# El tools.yaml preexistente no debe haber sido sobrescrito
+	assert "pre-existente" in (ws / "tools.yaml").read_text(encoding="utf-8")

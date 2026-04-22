@@ -32,7 +32,7 @@ from agno.os.interfaces.whatsapp.security import validate_webhook_signature
 from agno.registry import Registry
 from agno.utils.log import logger
 
-from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS
+from loader import load_workspace, is_rate_limit_error, NON_AUDIO_PROVIDERS, build_db_url
 from management.validator import print_validation, validate_workspace, workspace_warnings
 from openagno.core.dedup import MessageDeduplicator
 from openagno.core.tenant import TenantStore
@@ -983,6 +983,62 @@ async def admin_tenant_reload(request: Request, tenant_slug: str):
 	"""Invalida la cache del tenant_loader para que se recargue en la proxima request."""
 	evicted = request.app.state.tenant_loader.reload(tenant_slug)
 	return {"status": "reloaded", "tenant_slug": tenant_slug, "evicted": evicted}
+
+
+@base_app.post("/admin/tenants/{tenant_slug}/reset-sessions")
+@limiter.limit("6/minute")
+async def admin_tenant_reset_sessions(request: Request, tenant_slug: str):
+	"""Borra sesiones y memorias Agno del tenant y re-invalida su cache.
+
+	Se usa cuando la identidad del agente cambia (nuevo nombre, nuevo modelo)
+	y el `agent_data` persistido esta contaminando las respuestas, haciendo
+	que el agente siga llamandose como antes. Tambien util tras migraciones.
+	"""
+	from openagno.core.tenant import normalize_tenant_id
+	import psycopg
+
+	slug = normalize_tenant_id(tenant_slug)
+	if not slug or ":" in slug:
+		raise HTTPException(status_code=400, detail="invalid tenant_slug")
+
+	user_prefix = f"{slug}:%"
+	db_url = build_db_url(config.get("database", {}))
+	sync_url = db_url.replace("postgresql+psycopg://", "postgresql://")
+	if sync_url.startswith("sqlite"):
+		raise HTTPException(status_code=400, detail="reset-sessions requires a postgres backend")
+
+	sessions_deleted = 0
+	memories_deleted = 0
+	try:
+		with psycopg.connect(sync_url) as conn:
+			with conn.cursor() as cur:
+				cur.execute(
+					"DELETE FROM ai.agno_sessions WHERE user_id LIKE %s",
+					(user_prefix,),
+				)
+				sessions_deleted = cur.rowcount or 0
+				cur.execute(
+					"DELETE FROM ai.agno_memories WHERE user_id LIKE %s",
+					(user_prefix,),
+				)
+				memories_deleted = cur.rowcount or 0
+	except psycopg.Error as exc:
+		logger.error(f"reset-sessions fallo para tenant='{slug}': {exc}")
+		raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+	# Invalida cache para que la siguiente request reconstruya con identidad fresca.
+	evicted = request.app.state.tenant_loader.reload(slug)
+	logger.warning(
+		f"[{slug}] Admin reset-sessions: sessions={sessions_deleted}, "
+		f"memories={memories_deleted}, cache_evicted={evicted}"
+	)
+	return {
+		"status": "reset",
+		"tenant_slug": slug,
+		"sessions_deleted": sessions_deleted,
+		"memories_deleted": memories_deleted,
+		"cache_evicted": evicted,
+	}
 
 
 @base_app.get("/admin/health")
