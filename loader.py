@@ -593,7 +593,15 @@ def is_rate_limit_error(error: Exception) -> bool:
 	return any(p in msg or p in error_type for p in RATE_LIMIT_PATTERNS)
 
 
-def _build_single_model(provider: str, model_id: str, aws_region: str) -> Any:
+def _build_single_model(
+	provider: str,
+	model_id: str,
+	aws_region: str,
+	*,
+	api_key: Optional[str] = None,
+	aws_access_key_id: Optional[str] = None,
+	aws_secret_access_key: Optional[str] = None,
+) -> Any:
 	"""Construye una instancia de modelo por proveedor.
 
 	Proveedores verificados contra docs.agno.com:
@@ -602,36 +610,76 @@ def _build_single_model(provider: str, model_id: str, aws_region: str) -> Any:
 	- anthropic:          from agno.models.anthropic import Claude
 	- aws_bedrock:        from agno.models.aws import AwsBedrock  (Mistral, Nova)
 	- aws_bedrock_claude: from agno.models.aws import Claude       (Anthropic via Bedrock)
+
+	Credenciales BYOK (per-tenant): cuando `api_key` o `aws_*` vienen desde el
+	workspace del tenant, se pasan como kwargs a la clase Agno para que ese
+	tenant use sus propias keys. Cuando no vienen (por ejemplo el workspace del
+	operador), los kwargs son `None` y Agno cae automaticamente al valor de
+	`os.environ`, que es como se ha venido usando historicamente.
 	"""
+	# Solo pasamos el kwarg si tiene valor; None explicito podria sobrescribir
+	# los defaults internos de Agno en algunas clases.
+	single_key_kwargs: dict[str, Any] = {}
+	if api_key:
+		single_key_kwargs["api_key"] = api_key
+
 	match provider:
 		case "google":
 			from agno.models.google import Gemini
-			return Gemini(id=model_id)
+			return Gemini(id=model_id, **single_key_kwargs)
 		case "openai":
 			from agno.models.openai import OpenAIChat
-			return OpenAIChat(id=model_id)
+			return OpenAIChat(id=model_id, **single_key_kwargs)
 		case "anthropic":
 			from agno.models.anthropic import Claude
-			return Claude(id=model_id)
+			return Claude(id=model_id, **single_key_kwargs)
 		case "aws_bedrock":
 			from agno.models.aws import AwsBedrock
-			return AwsBedrock(id=model_id, aws_region=aws_region)
+			aws_kwargs: dict[str, Any] = {"aws_region": aws_region}
+			if aws_access_key_id:
+				aws_kwargs["aws_access_key_id"] = aws_access_key_id
+			if aws_secret_access_key:
+				aws_kwargs["aws_secret_access_key"] = aws_secret_access_key
+			return AwsBedrock(id=model_id, **aws_kwargs)
 		case "aws_bedrock_claude":
 			from agno.models.aws import Claude as BedrockClaude
-			return BedrockClaude(id=model_id, aws_region=aws_region)
+			# agno.models.aws.Claude expone `aws_access_key`/`aws_secret_key`
+			# (sin sufijo `_id`/`_access`). Mantener el mapeo explicito.
+			bedrock_kwargs: dict[str, Any] = {"aws_region": aws_region}
+			if aws_access_key_id:
+				bedrock_kwargs["aws_access_key"] = aws_access_key_id
+			if aws_secret_access_key:
+				bedrock_kwargs["aws_secret_key"] = aws_secret_access_key
+			return BedrockClaude(id=model_id, **bedrock_kwargs)
 		case _:
 			raise ValueError(f"Proveedor de modelo no soportado: {provider}")
 
 
 def build_model(model_config: dict[str, Any]) -> Any:
-	"""Construye el modelo con fallback opcional para rate limits."""
+	"""Construye el modelo con fallback opcional para rate limits.
+
+	`model_config` puede incluir credenciales BYOK del tenant:
+	- `api_key`: OpenAI, Anthropic, Google Gemini.
+	- `aws_access_key_id`, `aws_secret_access_key`: AWS Bedrock (Claude o base).
+
+	Si no vienen (ej. workspace del operador que confia en el .env del servidor),
+	Agno cae automaticamente a los valores de `os.environ`.
+	"""
 	provider = model_config.get("provider", "google")
 	model_id = model_config.get("id", "gemini-2.5-flash")
 	aws_region = model_config.get("aws_region", os.getenv("AWS_REGION", "us-east-1"))
+	api_key = model_config.get("api_key")
+	aws_access_key_id = model_config.get("aws_access_key_id")
+	aws_secret_access_key = model_config.get("aws_secret_access_key")
 
-	model = _build_single_model(provider, model_id, aws_region)
-
-	return model
+	return _build_single_model(
+		provider,
+		model_id,
+		aws_region,
+		api_key=api_key,
+		aws_access_key_id=aws_access_key_id,
+		aws_secret_access_key=aws_secret_access_key,
+	)
 
 
 def build_fallback_model(
@@ -665,9 +713,27 @@ def build_fallback_model(
 	fb_provider = fallback_config.get("provider", provider)
 	fb_id = fallback_config["id"]
 	fb_region = fallback_config.get("aws_region", aws_region)
+	# Credenciales: si el fallback no tiene las suyas, hereda del modelo principal
+	# (escenario mas comun: mismo tenant usando el mismo provider con otro modelo).
+	fb_api_key = fallback_config.get("api_key") or resolved_model_config.get("api_key")
+	fb_aws_access = (
+		fallback_config.get("aws_access_key_id")
+		or resolved_model_config.get("aws_access_key_id")
+	)
+	fb_aws_secret = (
+		fallback_config.get("aws_secret_access_key")
+		or resolved_model_config.get("aws_secret_access_key")
+	)
 
 	try:
-		fb_model = _build_single_model(fb_provider, fb_id, fb_region)
+		fb_model = _build_single_model(
+			fb_provider,
+			fb_id,
+			fb_region,
+			api_key=fb_api_key,
+			aws_access_key_id=fb_aws_access,
+			aws_secret_access_key=fb_aws_secret,
+		)
 		logger.info(f"Modelo fallback disponible: {fb_provider}/{fb_id}")
 		return fb_model
 	except Exception as e:

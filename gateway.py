@@ -672,17 +672,18 @@ wa_config = config.get("whatsapp", {})
 wa_mode = wa_config.get("mode", "cloud_api")
 
 if "whatsapp" in channels:
-	# Modo 1: Cloud API (oficial Meta) — siempre disponible
+	# Modo 1: Cloud API (oficial Meta) — siempre disponible para el operador
 	if wa_mode in ("cloud_api", "dual"):
 		from agno.os.interfaces.whatsapp import Whatsapp
 		interfaces.append(Whatsapp(agent=main_agent))
 		logger.info("WhatsApp Cloud API habilitado (API oficial Meta)")
 
-	# Modo 2: QR Link (via Baileys bridge multi-tenant)
-	if wa_mode in ("qr_link", "dual"):
-		bridge_url = wa_config.get("qr_link", {}).get("bridge_url", "http://localhost:3001")
-		_setup_whatsapp_qr_routes(base_app, bridge_url)
-		logger.info(f"WhatsApp QR Link habilitado (bridge multi-tenant: {bridge_url})")
+# El endpoint /whatsapp-qr/* es multi-tenant: siempre debe montarse para que
+# cualquier tenant con `qr_link` pueda enrutar mensajes, independientemente
+# del modo configurado en el workspace global del operador.
+_bridge_url = wa_config.get("qr_link", {}).get("bridge_url", os.getenv("OPENAGNO_WHATSAPP_QR_BRIDGE_URL", "http://localhost:3001"))
+_setup_whatsapp_qr_routes(base_app, _bridge_url)
+logger.info(f"WhatsApp QR routes habilitadas (multi-tenant bridge: {_bridge_url})")
 
 if "slack" in channels:
 	from agno.os.interfaces.slack import Slack
@@ -869,7 +870,15 @@ async def admin_health(request: Request, tenant_slug: str | None = None):
 		else:
 			try:
 				bundle = request.app.state.tenant_loader.get_or_load(resolved_tenant)
-				tenant_model = {**bundle["config"].get("model", {})}
+				raw_model = bundle["config"].get("model", {})
+				# Redact BYOK credentials: this endpoint is reachable by anyone
+				# who can hit api.openagno.com, so never echo api_key or aws_*.
+				# Keep only the public discriminators the dashboard needs.
+				tenant_model = {
+					k: v
+					for k, v in raw_model.items()
+					if k in {"provider", "id", "aws_region"}
+				}
 			except LookupError as exc:
 				tenant_model = {"error": f"workspace_missing: {exc}"}
 

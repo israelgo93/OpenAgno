@@ -113,6 +113,13 @@ Puntos clave del runtime multi-tenant (Fase A):
 - Tras cualquier `PUT /tenants/{id}/workspace` Cloud debe llamar a `POST /tenants/{id}/reload` para invalidar el cache del tenant.
 - El bridge WhatsApp QR tiene una sesion aislada por tenant. `POST /whatsapp-qr/incoming` recibe `tenant_slug` y el gateway selecciona el agente correcto; el tenant `default` conserva el wrapper STT/TTS/Fallback del operador.
 
+BYOK (bring your own key) por tenant:
+
+- `loader._build_single_model(provider, model_id, aws_region, api_key=?, aws_access_key_id=?, aws_secret_access_key=?)` acepta credenciales opcionales que vienen del `workspace/config.yaml` del tenant (en `model.api_key`, `model.aws_access_key_id`, `model.aws_secret_access_key`).
+- Cuando el tenant trae su API key (cliente normal), Agno la usa directamente via kwargs (`OpenAIChat(api_key=...)`, `Claude(api_key=...)`, `Gemini(api_key=...)`, `AwsBedrock(aws_access_key_id=..., aws_secret_access_key=...)`, `aws.Claude(aws_access_key=..., aws_secret_key=...)`).
+- Cuando el tenant NO trae credenciales (escenario operador), los kwargs van como `None` y Agno cae automaticamente a `os.environ` (el .env del servidor).
+- `GET /admin/health?tenant_slug=X` redacta las credenciales: solo devuelve `provider`, `id`, `aws_region`. Nunca `api_key` ni `aws_secret_*`.
+
 Do not widen that contract casually in 10.5. In particular:
 
 - do not assume Cloud may call `/knowledge/*`

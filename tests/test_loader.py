@@ -207,7 +207,17 @@ class TestBuildFallbackModel:
         with patch("loader._build_single_model", return_value="fallback-model") as mocked:
             result = build_fallback_model(config, model_config=config["model"])
         assert result == "fallback-model"
-        mocked.assert_called_once_with("openai", "gpt-4o-mini", "us-east-1")
+        # Desde la Fase BYOK, build_fallback_model propaga credenciales heredadas.
+        # Cuando el config no las define, se envian como None para que Agno caiga
+        # al os.environ (comportamiento del operador).
+        mocked.assert_called_once_with(
+            "openai",
+            "gpt-4o-mini",
+            "us-east-1",
+            api_key=None,
+            aws_access_key_id=None,
+            aws_secret_access_key=None,
+        )
 
     def test_supports_legacy_nested_fallback_block(self):
         model_config = {
@@ -222,7 +232,14 @@ class TestBuildFallbackModel:
         with patch("loader._build_single_model", return_value="fallback-model") as mocked:
             result = build_fallback_model(model_config)
         assert result == "fallback-model"
-        mocked.assert_called_once_with("anthropic", "claude-sonnet-4", "us-east-1")
+        mocked.assert_called_once_with(
+            "anthropic",
+            "claude-sonnet-4",
+            "us-east-1",
+            api_key=None,
+            aws_access_key_id=None,
+            aws_secret_access_key=None,
+        )
 
 
 class TestSanitizeHistory:
