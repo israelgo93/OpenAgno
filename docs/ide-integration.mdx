@@ -1,17 +1,56 @@
 ---
 title: IDE integration
-description: Connect OpenAgno Docs to Claude Code, Cursor, VS Code, and Windsurf with MCP and llms.txt.
+description: Connect any agent-capable IDE (Claude Code, Cursor, VS Code, Windsurf, Aider, Zed) to OpenAgno through MCP, AGENTS.md, and local skills.
 ---
 
-OpenAgno publishes its documentation as a remote MCP server and as `llms.txt`, so both developers and non-developers can plug the docs into AI tools without scraping the site manually.
+OpenAgno is designed to work with any agent-capable IDE without adopting a vendor-specific convention. There are three layers you can combine:
 
-## Public endpoints
+1. **`AGENTS.md`** at the repository root &mdash; the standard file any AI agent should read first. It describes the scope of the repo, the runtime contract, setup commands, and project-specific rules.
+2. **Skills under `.agents/skills/`** &mdash; focused playbooks for common tasks. Today the repo ships `openagno`, `openagno-channels`, and `mintlify`.
+3. **MCP integration** &mdash; adds authoritative, up-to-date documentation for OpenAgno and its dependencies.
+
+Together they let any IDE that understands MCP and `AGENTS.md` be productive in the repo without prompt engineering from scratch.
+
+## Public MCP endpoints
 
 - MCP server: `https://docs.openagno.com/mcp`
 - `llms.txt`: `https://docs.openagno.com/llms.txt`
 - `llms-full.txt`: `https://docs.openagno.com/llms-full.txt`
 
-## For developers
+## `AGENTS.md` convention
+
+The repository follows [`agents.md`](https://agents.md), a de-facto standard adopted by most modern AI coding assistants. If your IDE looks for `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, or `rules.md`, it will either read the file directly or you can point it at it. The content is IDE-agnostic on purpose.
+
+Where the file lives:
+
+- `AGENTS.md` in the repo root of `OpenAgno` (this repo)
+- `AGENTS.md` in the repo root of `OpenAgnoCloud`
+
+What it contains:
+
+- Scope of the repository and the sibling boundary
+- Current baseline (version, Agno floor, Python, Node)
+- Prerequisites to run the project
+- Setup commands
+- Repository map
+- Validation commands and expectations per change type
+- Runtime contract with OpenAgnoCloud (and vice versa)
+- Security and safety rules
+- Agent workflow checklist
+
+## Skills under `.agents/skills/`
+
+Each skill is a self-contained Markdown file with YAML frontmatter describing when to use it. Agent-capable IDEs that understand the skills convention (Claude Code, Cursor, etc.) will surface them automatically when they match the user's task. For IDEs that do not, the files still serve as searchable documentation for the agent.
+
+This repo ships:
+
+- `.agents/skills/openagno/SKILL.md` &mdash; the general runtime and CLI playbook. Covers install, common commands, key paths, runtime routes, and typical tasks (add a sub-agent, add a channel, BYOK, debug a failing run).
+- `.agents/skills/openagno-channels/SKILL.md` &mdash; WhatsApp Cloud API (single-tenant and multi-tenant), WhatsApp QR (Baileys bridge), Slack, Telegram, AG-UI, A2A. Includes Meta Developer Console setup and debugging tips.
+- `.agents/skills/mintlify/SKILL.md` &mdash; best practices for writing and maintaining the documentation site.
+
+The Cloud repo ships `.agents/skills/openagno-cloud/SKILL.md` with its own Next.js + Supabase + Stripe playbook.
+
+## Per-IDE setup
 
 Use the ready-to-copy templates from the repository:
 
@@ -19,14 +58,14 @@ Use the ready-to-copy templates from the repository:
 - `ide-configs/vscode-mcp.json`
 - `ide-configs/windsurf-mcp.json`
 - `ide-configs/claude-code-setup.sh`
-- `.agents/skills/openagno/SKILL.md`
 
 Recommended setup by tool:
 
-- Claude Code: run `bash ide-configs/claude-code-setup.sh`
-- Cursor: copy `ide-configs/cursor-mcp.json` to `.cursor/mcp.json`
-- VS Code: copy `ide-configs/vscode-mcp.json` to `.vscode/mcp.json`
-- Windsurf: merge `ide-configs/windsurf-mcp.json` into `~/.codeium/windsurf/mcp_config.json`
+- **Claude Code**: run `bash ide-configs/claude-code-setup.sh`. Claude Code picks up `AGENTS.md` (or a legacy `CLAUDE.md`) automatically and offers the `.agents/skills/*` as slash commands.
+- **Cursor**: copy `ide-configs/cursor-mcp.json` to `.cursor/mcp.json`. Cursor will also read `AGENTS.md` as project context.
+- **VS Code** (GitHub Copilot): copy `ide-configs/vscode-mcp.json` to `.vscode/mcp.json`. Copilot Workspace reads `AGENTS.md` when present.
+- **Windsurf**: merge `ide-configs/windsurf-mcp.json` into `~/.codeium/windsurf/mcp_config.json`.
+- **Aider, Zed, OpenHands, or any other agent IDE**: point them at `https://docs.openagno.com/mcp` as a remote MCP server, and make sure the repo's `AGENTS.md` is in the agent's context window. Nothing else is needed.
 
 ## For operators and non-developers
 
