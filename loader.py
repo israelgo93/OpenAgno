@@ -318,8 +318,19 @@ BUILTIN_TOOL_MAP: dict[str, Any] = {
 }
 
 
-def build_tools(tools_config: dict[str, Any]) -> list[Any]:
-	"""Construye la lista de tools segun tools.yaml."""
+def build_tools(
+	tools_config: dict[str, Any],
+	*,
+	workspace_dir: Path | None = None,
+	tenant_slug: str | None = None,
+	on_reload: Any = None,
+) -> list[Any]:
+	"""Construye la lista de tools segun tools.yaml.
+
+	`workspace_dir`, `tenant_slug` y `on_reload` se propagan a los toolkits
+	que dependen del workspace del tenant (hoy: WorkspaceTools). Si no se
+	pasan, los toolkits caen a su comportamiento legacy global.
+	"""
 	tools: list[Any] = []
 
 	for tool_def in tools_config.get("builtin", []):
@@ -362,8 +373,15 @@ def build_tools(tools_config: dict[str, Any]) -> list[Any]:
 				tools.append(ShellTools(base_dir=base_path))
 			case "workspace":
 				from tools.workspace_tools import WorkspaceTools
-				tools.append(WorkspaceTools())
-				logger.info("WorkspaceTools activado — auto-configuracion habilitada")
+				tools.append(WorkspaceTools(
+					workspace_dir=workspace_dir,
+					tenant_slug=tenant_slug,
+					on_reload=on_reload,
+				))
+				logger.info(
+					f"WorkspaceTools activado — auto-configuracion habilitada"
+					f"{' (tenant=' + tenant_slug + ')' if tenant_slug else ''}"
+				)
 			case "scheduler_mgmt":
 				from tools.scheduler_tools import SchedulerTools
 				tools.append(SchedulerTools())
@@ -966,13 +984,22 @@ def load_workspace() -> dict[str, Any]:
 	return load_workspace_from_dir(WORKSPACE_DIR)
 
 
-def load_workspace_from_dir(workspace_dir: Path) -> dict[str, Any]:
+def load_workspace_from_dir(
+	workspace_dir: Path,
+	*,
+	tenant_slug: str | None = None,
+	on_reload: Any = None,
+) -> dict[str, Any]:
 	"""
 	Carga completa del workspace desde un directorio arbitrario.
 
 	Retorna un dict con todos los objetos necesarios para construir el AgentOS.
 	Usado por el tenant_loader para aislar workspaces per-tenant sin modificar
 	el estado global del proceso.
+
+	`tenant_slug` y `on_reload` se propagan a los toolkits que dependen del
+	tenant (hoy WorkspaceTools) para que sus mutaciones invaliden unicamente
+	la cache del tenant correspondiente sin reiniciar el daemon global.
 	"""
 	workspace_dir = Path(workspace_dir)
 	config = load_yaml("config.yaml", workspace_dir=workspace_dir)
@@ -992,7 +1019,12 @@ def load_workspace_from_dir(workspace_dir: Path) -> dict[str, Any]:
 	vector_config = config.get("vector", {})
 	knowledge = build_knowledge(db_url, db, vector_config, db_config)
 
-	tools = build_tools(tools_config)
+	tools = build_tools(
+		tools_config,
+		workspace_dir=workspace_dir,
+		tenant_slug=tenant_slug,
+		on_reload=on_reload,
+	)
 	mcp_tools = build_mcp_tools(mcp_config)
 	tools.extend(mcp_tools)
 

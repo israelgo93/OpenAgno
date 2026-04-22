@@ -36,7 +36,7 @@ from openagno.core.tenant import DEFAULT_TENANT, normalize_tenant_id
 from openagno.core.workspace_store import WorkspaceStore
 
 
-WorkspaceBundleLoader = Callable[[Path], dict[str, Any]]
+WorkspaceBundleLoader = Callable[..., dict[str, Any]]
 
 
 class TenantLoader:
@@ -161,11 +161,34 @@ class TenantLoader:
 				f"Workspace directory missing for tenant '{normalized_slug}': {workspace_dir}"
 			)
 		logger.info(f"TenantLoader cargando workspace '{normalized_slug}' desde {workspace_dir}")
-		return self._bundle_loader(workspace_dir)
+
+		def _on_reload(slug_override: str | None = None) -> None:
+			self.reload(slug_override or normalized_slug)
+
+		# Tratamos de pasar tenant_slug/on_reload cuando el bundle_loader
+		# acepta esos kwargs (el default y load_workspace_from_dir lo hacen).
+		# Mantemos compatibilidad con loaders legacy que solo aceptan path.
+		try:
+			return self._bundle_loader(
+				workspace_dir,
+				tenant_slug=normalized_slug,
+				on_reload=_on_reload,
+			)
+		except TypeError:
+			return self._bundle_loader(workspace_dir)
 
 
-def _default_bundle_loader(workspace_dir: Path) -> dict[str, Any]:
+def _default_bundle_loader(
+	workspace_dir: Path,
+	*,
+	tenant_slug: str | None = None,
+	on_reload: Callable[[str | None], None] | None = None,
+) -> dict[str, Any]:
 	# Imported lazily to avoid a circular import at module load time.
 	from loader import load_workspace_from_dir  # type: ignore
 
-	return load_workspace_from_dir(workspace_dir)
+	return load_workspace_from_dir(
+		workspace_dir,
+		tenant_slug=tenant_slug,
+		on_reload=on_reload,
+	)
