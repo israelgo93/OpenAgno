@@ -316,6 +316,64 @@ async def lifespan(app: FastAPI):
 	yield
 
 
+async def _transcribe_audio_with_openai(
+	audio_bytes: bytes,
+	mime_type: str,
+	api_key: str,
+	*,
+	model: str = "gpt-4o-mini-transcribe",
+) -> str | None:
+	"""Transcribe an audio blob via the OpenAI API.
+
+	Uses the provided `api_key` so the call hits the tenant's own OpenAI
+	account when BYOK is configured. When the tenant uses a non-OpenAI
+	provider, the caller can fall back to `OPENAGNO.env::OPENAI_API_KEY`.
+
+	Returns the transcribed text or `None` if transcription failed (network,
+	auth, unsupported format). Runs the synchronous OpenAI client in a
+	thread so it doesn't block the event loop.
+	"""
+	import asyncio
+	import tempfile
+	from openai import OpenAI
+
+	suffix_map = {
+		"audio/ogg": ".ogg",
+		"audio/opus": ".ogg",
+		"audio/mpeg": ".mp3",
+		"audio/mp4": ".m4a",
+		"audio/x-m4a": ".m4a",
+		"audio/wav": ".wav",
+		"audio/webm": ".webm",
+		"audio/amr": ".amr",
+		"audio/aac": ".aac",
+	}
+	root = (mime_type or "").lower().split(";")[0].strip()
+	suffix = suffix_map.get(root, ".ogg")
+
+	def _run() -> str | None:
+		tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+		tmp.write(audio_bytes)
+		tmp.close()
+		try:
+			client = OpenAI(api_key=api_key)
+			with open(tmp.name, "rb") as fh:
+				res = client.audio.transcriptions.create(model=model, file=fh)
+			text = getattr(res, "text", None)
+			return text if isinstance(text, str) and text.strip() else None
+		finally:
+			try:
+				os.unlink(tmp.name)
+			except OSError:
+				pass
+
+	try:
+		return await asyncio.to_thread(_run)
+	except Exception as exc:
+		logger.error(f"OpenAI Whisper transcription fallo: {type(exc).__name__}: {exc}")
+		return None
+
+
 def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 	"""Monta rutas para WhatsApp QR bridge.
 
@@ -423,12 +481,85 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 				except Exception as e:
 					logger.error(f"Error decodificando media b64: {e}")
 
+			# Resolver el bundle del tenant una sola vez: lo necesitamos para el
+			# agente y, si viene audio, para leer su api_key de OpenAI y usarla
+			# como credencial de Whisper.
+			tenant_loader = app.state.tenant_loader
+			tenant_bundle = None
+			if tenant_slug != DEFAULT_TENANT:
+				try:
+					tenant_bundle = tenant_loader.get_or_load(tenant_slug)
+				except LookupError as exc:
+					logger.error(f"[{tenant_slug}] No se pudo cargar workspace: {exc}")
+					return {"status": "error", "error": f"tenant_workspace_missing: {exc}"}
+
+			# --- Preprocesamiento de audio para tenants ---
+			# La mayoria de modelos de texto (gpt-5-mini, claude-*, gemini-*
+			# salvo variantes `-audio-preview`) responden 400 si reciben un
+			# bloque de audio raw. Antes de llamar al agente transcribimos con
+			# Whisper usando la API key del tenant (BYOK). Si el tenant no usa
+			# OpenAI, caemos a la OPENAI_API_KEY del servidor como fallback.
+			# El tenant `default` sigue yendo por el wrapper STT del operador.
+			if (
+				media_bytes
+				and msg_type == "audio"
+				and tenant_slug != DEFAULT_TENANT
+				and tenant_bundle is not None
+			):
+				tenant_model_cfg = tenant_bundle["config"].get("model", {})
+				provider = str(tenant_model_cfg.get("provider", "")).strip().lower()
+				whisper_key = None
+				key_source = "missing"
+				if provider == "openai":
+					whisper_key = tenant_model_cfg.get("api_key") or None
+					if whisper_key:
+						key_source = "tenant"
+				if not whisper_key:
+					whisper_key = os.getenv("OPENAI_API_KEY") or None
+					if whisper_key:
+						key_source = "server-fallback"
+
+				if whisper_key:
+					logger.info(
+						f"[{tenant_slug}] Transcribiendo audio ({len(media_bytes)} bytes, mime={mime_type}) "
+						f"via Whisper (key_source={key_source})"
+					)
+					transcription = await _transcribe_audio_with_openai(
+						media_bytes,
+						mime_type or "audio/ogg",
+						whisper_key,
+					)
+					if transcription:
+						text = f"[Transcripcion de audio]: {transcription}"
+						logger.info(
+							f"[{tenant_slug}] Audio transcrito: {len(transcription)} chars"
+						)
+					else:
+						text = (
+							"[Recibi tu mensaje de audio pero no pude transcribirlo. "
+							"Intenta de nuevo o enviame el mensaje como texto.]"
+						)
+				else:
+					logger.warning(
+						f"[{tenant_slug}] Audio recibido pero no hay API key de OpenAI "
+						f"disponible (provider={provider}); devolviendo placeholder al agente"
+					)
+					text = (
+						"[Recibi tu mensaje de audio. Para que lo pueda procesar, "
+						"configura una API key de OpenAI en tu workspace.]"
+					)
+				# El agente debe ver solo texto: descartamos los bytes de audio.
+				media_bytes = None
+				msg_type = "text"
+
 			arun_kwargs: dict = {
 				"user_id": f"{tenant_slug}:{from_jid}",
 				"session_id": f"{tenant_slug}:{from_jid}",
 			}
 
 			if media_bytes and msg_type == "audio":
+				# Path del operador (tenant default): el wrapper _qr_agent_arun
+				# se encarga del STT/TTS con `_audio_tools`.
 				arun_kwargs["audio"] = [AgnoAudio(
 					content=media_bytes,
 					mime_type=mime_type or "audio/ogg",
@@ -451,17 +582,11 @@ def _setup_whatsapp_qr_routes(app: FastAPI, bridge_url: str):
 					text = f"[{msg_type} recibido — tipo: {mime_type}]"
 				logger.info(f"[{tenant_slug}] QR Bridge {msg_type} recibido pero no procesable como media directa")
 
-			tenant_loader = app.state.tenant_loader
 			if tenant_slug == DEFAULT_TENANT:
 				# Operador: usa el agente global con wrapper STT/TTS/Fallback.
 				response = await _qr_agent_arun(text, **arun_kwargs)
 			else:
-				try:
-					bundle = tenant_loader.get_or_load(tenant_slug)
-				except LookupError as exc:
-					logger.error(f"[{tenant_slug}] No se pudo cargar workspace: {exc}")
-					return {"status": "error", "error": f"tenant_workspace_missing: {exc}"}
-				tenant_agent = bundle["main_agent"]
+				tenant_agent = tenant_bundle["main_agent"]  # type: ignore[index]
 				response = await tenant_agent.arun(text, **arun_kwargs)
 
 			response_text = None
