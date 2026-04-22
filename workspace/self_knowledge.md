@@ -85,5 +85,48 @@ execution:
 2. Si necesitas un tool que no existe, **consulta MCP de Agno** (`docs.agno.com/mcp`) para ver si hay un tool builtin o MCP disponible.
 3. Los sub-agentes **NO heredan** los tools del agente principal. Debes declararlos explícitamente.
 4. Los sub-agentes **NO heredan** MCP servers. Si necesitan acceso a MCP, deben configurarlo en su YAML.
-5. Después de crear un sub-agente, siempre llama `request_reload` para que se cargue.
+5. Después de cualquier mutación del workspace, siempre llama `request_reload` para que se cargue.
 6. Nunca uses nombres inventados de tools. Si no estás seguro, consulta `workspace/tools.yaml`.
+
+## WorkspaceTools — métodos disponibles
+
+El toolkit `workspace` te permite auto-configurarte desde el chat. Todos los cambios van contra **tu propio workspace** (no el de otros tenants). Cada mutación crea un backup automático y exige `request_reload` para surtir efecto.
+
+### Lectura
+- `read_workspace_file(filename)` — lee `config.yaml`, `instructions.md`, etc.
+- `list_workspace()` — árbol de archivos del workspace.
+- `list_sub_agents()` — enumera todos los sub-agentes con id, rol, modelo y tools.
+
+### Instrucciones y tools del agente principal
+- `update_instructions(new_instructions)` — reescribe `instructions.md`.
+- `enable_tool(name)` / `disable_tool(name)` — activa o desactiva tools declarados en `tools.yaml`.
+- `toggle_tool(name, enabled)` — equivalente con flag explícito.
+
+### Modelo principal
+- `set_model(provider, model_id, api_key?, aws_access_key_id?, aws_secret_access_key?, aws_region?)` — cambia el modelo en `config.yaml::model`. Si el usuario comparte credenciales por chat, el valor queda en texto plano en el YAML; recomiéndale rotarlas por el dashboard.
+
+### Sub-agentes
+- `create_sub_agent(name, agent_id, role, tools, instructions, model_provider?, model_id?)` — crea `agents/<id>.yaml`.
+- `disable_sub_agent(agent_id)` — renombra a `.yaml.disabled` (reversible).
+- `delete_sub_agent(agent_id)` — elimina con backup.
+
+### Teams
+- `create_team(team_id, name, mode, members, instructions?, model_provider?, model_id?)` — upsert en `agents/teams.yaml`. `mode` debe ser `coordinate|route|broadcast|tasks` y `members` deben ser IDs válidos (los propios sub-agentes o `agnobot-main`).
+
+### MCP servers
+- `add_mcp_server(name, transport, url?, command?, args?, headers?, env?, enabled?)` — upsert en `mcp.yaml`. Para `streamable-http`/`sse` usa `url`; para `stdio` usa `command`+`args`.
+- `disable_mcp_server(name)` — baja `enabled=false` sobre una entrada existente.
+
+### Archivo crudo
+- `write_workspace_file(filename, content)` — edita cualquier archivo relativo al workspace (con backup). Útil cuando necesitas una mutación que no cubra ningún método específico.
+
+### Reload
+- `request_reload()` — tras cualquier mutación, invoca este método. En tenants no-default invalida solo tu cache en el TenantLoader; la siguiente request reconstruye tu workspace.
+
+## Ejemplos de auto-configuración desde chat
+
+- "Crea un sub-agente de ventas que use DuckDuckGo y Reasoning con claude-sonnet-4-6" → `create_sub_agent` → `request_reload`.
+- "Activa el MCP de Supabase" → `add_mcp_server(name='supabase', transport='stdio', command='npx', args=['-y','@supabase/mcp-server-supabase'], env={...})` → `request_reload`.
+- "Arma un team de research con agnobot-main y research-agent" → `create_team(team_id='research-team', mode='coordinate', members=['agnobot-main','research-agent'], ...)` → `request_reload`.
+- "Cambia mi modelo principal a gpt-4o" → `set_model('openai','gpt-4o')` → `request_reload`.
+- "Desactiva el tool shell" → `disable_tool('shell')` → `request_reload`.
