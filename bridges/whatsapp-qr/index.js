@@ -1,17 +1,16 @@
-const {
-	default: makeWASocket,
+import makeWASocket, {
 	useMultiFileAuthState,
 	DisconnectReason,
 	Browsers,
 	fetchLatestBaileysVersion,
 	downloadMediaMessage,
-} = require('@whiskeysockets/baileys');
-const express = require('express');
-const QRCode = require('qrcode');
-const qrcodeTerminal = require('qrcode-terminal');
-const pino = require('pino');
-const fs = require('fs');
-const path = require('path');
+} from '@whiskeysockets/baileys';
+import express from 'express';
+import QRCode from 'qrcode';
+import qrcodeTerminal from 'qrcode-terminal';
+import pino from 'pino';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 app.use(express.json({ limit: '25mb' }));
@@ -28,6 +27,10 @@ const SESSION_DIR = path.resolve(process.env.SESSION_DIR || './session');
 const PORT = Number(process.env.BRIDGE_PORT || 3001);
 const MAX_RETRIES = 5;
 const DEDUP_TTL_MS = 60_000;
+const OUTBOX_TTL_MS = 60_000;
+const SEND_READY_POLL_INTERVAL_MS = 500;
+const SEND_READY_POLL_ATTEMPTS = 4;
+const REPLACED_EARLY_WINDOW_MS = 30_000;
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'warn' });
@@ -52,13 +55,19 @@ function createSessionState(slug) {
 		connecting: false,
 		// Circuit breaker para conflicto 'replaced'. Cuando WhatsApp devuelve
 		// DisconnectReason.connectionReplaced repetidas veces es sintoma de
-		// creds zombies o de otro dispositivo vinculado compitiendo; en ese
-		// caso NO debemos reintentar en bucle porque llenamos el log y nunca
-		// se estabiliza el socket. Tras 3 eventos en 30s limpiamos creds y
-		// exigimos re-vinculacion manual desde el dashboard.
+		// otro dispositivo vinculado compitiendo (fantasma en el telefono).
+		// Marcamos needsRelink y dejamos de reconectar, pero NO borramos
+		// creds.json: solo el operador debe decidirlo via DELETE /sessions o
+		// el CTA "Re-vincular limpio" del dashboard.
 		replacedEvents: [],
 		needsRelink: false,
 		lastErrorCode: null,
+		lastConnectedAt: null,
+		lastRelinkReason: null,
+		// Cola de respuestas pendientes. Cuando /send falla porque el socket
+		// cayo entre que el agente produjo la respuesta y el HTTP call, la
+		// encolamos con TTL y la drenamos al proximo connection === 'open'.
+		pendingOutbox: [],
 	};
 }
 
@@ -99,6 +108,60 @@ function clearSessionDir(slug) {
 	if (fs.existsSync(dir)) {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
+}
+
+/**
+ * Cierra el socket de Baileys de forma segura, ignorando errores. Antes de
+ * tocar creds.json en disco hay que llamarlo y darle un tick al event loop
+ * para que no se solapen las escrituras de `creds.update` con nuestra limpieza.
+ */
+async function safeCloseSocket(sock) {
+	if (!sock) return;
+	try { sock.ev?.removeAllListeners?.('creds.update'); } catch { /* ignore */ }
+	try { sock.end(); } catch { /* ignore */ }
+	await new Promise((r) => setTimeout(r, 150));
+}
+
+/**
+ * Limpieza explicita de creds: solo se llama desde endpoints que el operador
+ * invoca conscientemente (DELETE /sessions/:slug, POST .../restart, o CTA
+ * "Re-vincular limpio" del dashboard). NUNCA desde un handler de desconexion.
+ */
+async function safeClearSessionDir(slug, session) {
+	if (session?.sock) {
+		await safeCloseSocket(session.sock);
+		session.sock = null;
+	}
+	clearSessionDir(slug);
+}
+
+function enqueuePending(session, jid, text) {
+	const now = Date.now();
+	session.pendingOutbox = session.pendingOutbox.filter((m) => now - m.ts < OUTBOX_TTL_MS);
+	session.pendingOutbox.push({ jid, text, ts: now });
+}
+
+async function drainPendingOutbox(session) {
+	if (!session.sock || session.status !== 'connected') return;
+	const now = Date.now();
+	const toSend = session.pendingOutbox.filter((m) => now - m.ts < OUTBOX_TTL_MS);
+	session.pendingOutbox = [];
+	for (const { jid, text } of toSend) {
+		try {
+			await session.sock.sendMessage(jid, { text });
+			console.log(`[${session.slug}] Outbox drenada -> ${jid}: "${text.substring(0, 50)}..."`);
+		} catch (err) {
+			console.error(`[${session.slug}] Outbox fallo enviar a ${jid}: ${err.message}`);
+		}
+	}
+}
+
+async function waitForSocketReady(session) {
+	for (let i = 0; i < SEND_READY_POLL_ATTEMPTS; i++) {
+		if (session.sock && session.status === 'connected') return true;
+		await new Promise((r) => setTimeout(r, SEND_READY_POLL_INTERVAL_MS));
+	}
+	return Boolean(session.sock && session.status === 'connected');
 }
 
 /**
@@ -153,7 +216,14 @@ async function connectTenant(slug) {
 				session.currentQR = null;
 				session.status = 'connected';
 				session.retries = 0;
+				session.replacedEvents = [];
+				session.lastConnectedAt = Date.now();
+				session.lastErrorCode = null;
+				session.lastRelinkReason = null;
 				console.log(`[${slug}] WhatsApp conectado`);
+				drainPendingOutbox(session).catch((e) =>
+					console.error(`[${slug}] Error drenando outbox:`, e?.message || e),
+				);
 			}
 
 			if (connection === 'close') {
@@ -162,33 +232,49 @@ async function connectTenant(slug) {
 				session.sock = null;
 				session.lastErrorCode = statusCode ?? null;
 
-				// Conflicto 'replaced' (440 / 515 segun version Baileys):
-				// circuit breaker para evitar el loop infinito que vimos con
-				// creds zombies tras desvincular y re-vincular.
+				// 515 restartRequired: evento transitorio justo despues del pairing
+				// o cambios de protocolo. SIEMPRE reconectar sin limpiar creds.
+				if (statusCode === DisconnectReason.restartRequired) {
+					session.retries = 0;
+					console.log(`[${slug}] restartRequired (515). Reconectando sin limpiar creds.`);
+					setTimeout(
+						() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion tras 515 fallo:`, e)),
+						500,
+					);
+					return;
+				}
+
+				// 'replaced' (440): otra sesion tomo las keys. Si es muy temprano
+				// tras un 'open' (ventana de 30s) es sintoma de dispositivo fantasma
+				// en el telefono del operador. Marcamos needsRelink directamente.
 				if (statusCode === DisconnectReason.connectionReplaced) {
 					const now = Date.now();
+					const connectedRecently =
+						session.lastConnectedAt && now - session.lastConnectedAt < REPLACED_EARLY_WINDOW_MS;
 					session.replacedEvents = session.replacedEvents.filter(
-						(t) => now - t < 30_000,
+						(t) => now - t < REPLACED_EARLY_WINDOW_MS,
 					);
 					session.replacedEvents.push(now);
-					if (session.replacedEvents.length >= 3) {
+
+					const persistent = session.replacedEvents.length >= 3;
+					if (persistent || connectedRecently) {
 						console.log(
-							`[${slug}] Conflicto 'replaced' persistente (${session.replacedEvents.length} en 30s). ` +
-							'Limpiando creds y exigiendo re-vinculacion manual desde el dashboard.',
+							`[${slug}] Conflicto 'replaced' (${session.replacedEvents.length} en 30s, connectedRecently=${Boolean(connectedRecently)}). ` +
+							'Marcando needs_relink SIN borrar creds. El operador debe: ' +
+							'(1) abrir WhatsApp > Dispositivos vinculados y cerrar el dispositivo fantasma, ' +
+							'(2) esperar ~5 min, (3) usar el CTA "Re-vincular limpio" (DELETE /sessions/:slug + POST /sessions/:slug).',
 						);
 						session.status = 'needs_relink';
 						session.needsRelink = true;
 						session.retries = 0;
 						session.replacedEvents = [];
-						clearSessionDir(slug);
-						// No reconectamos. El dashboard (o el operador) tiene que
-						// llamar POST /sessions/:slug para generar un QR nuevo.
+						session.lastRelinkReason = 'connection_replaced_ghost_device';
 						return;
 					}
 					session.retries += 1;
 					console.log(
 						`[${slug}] Conflicto 'replaced' (${session.replacedEvents.length}/3 en 30s). ` +
-						'Reintento en 2s.',
+						'Reintento en 2s sin limpiar creds.',
 					);
 					setTimeout(
 						() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)),
@@ -197,19 +283,33 @@ async function connectTenant(slug) {
 					return;
 				}
 
-				const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-				if (shouldReconnect) {
-					session.retries += 1;
-					const delay = Math.min(session.retries * 2000, 10_000);
-					console.log(`[${slug}] Reconectando en ${delay / 1000}s (intento ${session.retries}/${MAX_RETRIES})`);
-					setTimeout(() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)), delay);
-				} else {
-					console.log(`[${slug}] Sesion cerrada (loggedOut). Limpiando y regenerando QR...`);
-					session.status = 'logged_out';
-					clearSessionDir(slug);
+				// loggedOut (401): en Baileys 6.x este codigo aparece tanto cuando
+				// WhatsApp cierra la sesion de verdad como en transitorios post-pairing.
+				// NUNCA borramos creds automaticamente: marcamos needs_relink y
+				// dejamos que el operador decida via dashboard (DELETE + CTA).
+				if (statusCode === DisconnectReason.loggedOut) {
+					console.log(
+						`[${slug}] loggedOut (401) reportado. Marcando needs_relink SIN borrar creds. ` +
+						'Si fue un cierre genuino desde WhatsApp, usa "Re-vincular limpio" desde el dashboard.',
+					);
+					session.status = 'needs_relink';
+					session.needsRelink = true;
 					session.retries = 0;
-					setTimeout(() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion tras logout fallo:`, e)), 2000);
+					session.lastRelinkReason = 'logged_out_reported';
+					return;
 				}
+
+				session.retries += 1;
+				if (session.retries > MAX_RETRIES) {
+					console.log(`[${slug}] Maximo de reintentos (${MAX_RETRIES}) alcanzado. Marcando needs_relink.`);
+					session.status = 'needs_relink';
+					session.needsRelink = true;
+					session.lastRelinkReason = `max_retries_statuscode_${statusCode ?? 'unknown'}`;
+					return;
+				}
+				const delay = Math.min(session.retries * 2000, 10_000);
+				console.log(`[${slug}] Reconectando en ${delay / 1000}s (intento ${session.retries}/${MAX_RETRIES}, status=${statusCode})`);
+				setTimeout(() => connectTenant(slug).catch((e) => console.error(`[${slug}] Reconexion fallo:`, e)), delay);
 			}
 		});
 
@@ -328,6 +428,9 @@ function describeSession(session) {
 		retries: session.retries,
 		needs_relink: Boolean(session.needsRelink),
 		last_error_code: session.lastErrorCode ?? null,
+		last_connected_at: session.lastConnectedAt ?? null,
+		last_relink_reason: session.lastRelinkReason ?? null,
+		pending_outbox: session.pendingOutbox?.length ?? 0,
 	};
 }
 
@@ -407,17 +510,29 @@ app.post('/sessions/:tenantSlug/send', async (req, res) => {
 	if (!to || typeof text !== 'string') {
 		return res.status(400).json({ error: 'missing_fields' });
 	}
-	if (!session.sock || session.status !== 'connected') {
-		return res.status(503).json({ error: 'whatsapp_not_connected', status: session.status });
+	// Si needs_relink esta activo NO encolamos: la respuesta no va a poder
+	// drenarse nunca hasta intervencion manual. Devolvemos 503 explicito.
+	if (session.needsRelink) {
+		return res.status(503).json({ error: 'whatsapp_needs_relink', status: session.status });
+	}
+	const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+	// Polling corto: si el socket acaba de caer y esta reconectando, dale
+	// margen antes de fallar. Evita 503 falsos tras hiccups de red.
+	const ready = await waitForSocketReady(session);
+	if (!ready) {
+		// Encolamos con TTL 60s para drenar al proximo 'open'.
+		enqueuePending(session, jid, text);
+		console.log(`[${slug}] Socket no listo (status=${session.status}); respuesta encolada en outbox.`);
+		return res.status(202).json({ status: 'queued', queue_size: session.pendingOutbox.length });
 	}
 	try {
-		const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
 		await session.sock.sendMessage(jid, { text });
 		console.log(`[${slug}] Respuesta enviada a ${jid}: "${text.substring(0, 50)}..."`);
 		res.json({ status: 'sent' });
 	} catch (err) {
-		console.error(`[${slug}] Error enviando a ${to}: ${err.message}`);
-		res.status(500).json({ error: err.message });
+		console.error(`[${slug}] Error enviando a ${to}: ${err.message}. Encolando en outbox.`);
+		enqueuePending(session, jid, text);
+		res.status(202).json({ status: 'queued_after_error', queue_size: session.pendingOutbox.length, error: err.message });
 	}
 });
 
@@ -430,10 +545,9 @@ app.post('/sessions/:tenantSlug/restart', async (req, res) => {
 	session.needsRelink = false;
 	session.replacedEvents = [];
 	session.lastErrorCode = null;
-	if (session.sock) {
-		try { session.sock.end(); } catch { /* ignore */ }
-	}
-	clearSessionDir(slug);
+	session.lastRelinkReason = null;
+	session.pendingOutbox = [];
+	await safeClearSessionDir(slug, session);
 	try {
 		await connectTenant(slug);
 		res.json({ status: 'restarting', ...describeSession(session) });
@@ -448,7 +562,7 @@ app.delete('/sessions/:tenantSlug', async (req, res) => {
 	const session = sessions.get(slug);
 	if (session?.sock) {
 		try { await session.sock.logout(); } catch { /* ignore */ }
-		try { session.sock.end(); } catch { /* ignore */ }
+		await safeCloseSocket(session.sock);
 	}
 	sessions.delete(slug);
 	clearSessionDir(slug);

@@ -2,9 +2,10 @@
   "name": "openagno-whatsapp-bridge",
   "version": "1.0.0",
   "description": "WhatsApp QR bridge para OpenAgno via Baileys",
+  "type": "module",
   "main": "index.js",
   "dependencies": {
-    "@whiskeysockets/baileys": "6.17.16",
+    "@whiskeysockets/baileys": "6.7.21",
     "express": "^4.18.0",
     "pino": "^8.0.0",
     "qrcode": "^1.5.0",
