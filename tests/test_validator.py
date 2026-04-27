@@ -27,6 +27,17 @@ class TestValidateWorkspace:
         # SQLite no requiere DB_HOST, OPENAI_API_KEY, etc.
         assert not any("config.yaml" in e for e in errors)
 
+    def test_missing_model_provider_key_is_not_workspace_error(self, tmp_workspace, env_vars):
+        """Las keys de modelo se configuran por CLI/UI/BYOK y no bloquean el workspace base."""
+        env_vars(
+            WHATSAPP_ACCESS_TOKEN="test",
+            WHATSAPP_PHONE_NUMBER_ID="test",
+            WHATSAPP_VERIFY_TOKEN="test",
+        )
+        errors = validate_workspace(str(tmp_workspace))
+
+        assert not any("GOOGLE_API_KEY" in e for e in errors)
+
     def test_missing_config(self, tmp_path):
         """Un workspace sin config.yaml deberia reportar error."""
         ws = tmp_path / "workspace"
