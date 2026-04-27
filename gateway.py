@@ -38,6 +38,7 @@ from openagno.core.dedup import MessageDeduplicator
 from openagno.core.tenant import TenantStore
 from openagno.core.tenant_middleware import TenantMiddleware
 from openagno.core.workspace_store import WorkspaceStore
+from openagno.core.tenant_sync import sync_all_tenant_workspace_configs, sync_tenant_workspace_config
 from openagno import __version__
 
 validation_errors = validate_workspace()
@@ -823,6 +824,12 @@ workspace_store = WorkspaceStore(
 )
 base_app.state.tenant_store = tenant_store
 base_app.state.workspace_store = workspace_store
+_tenant_sync_results = sync_all_tenant_workspace_configs(tenant_store, workspace_store)
+_synced_tenants = [slug for slug, synced in _tenant_sync_results if synced]
+if _synced_tenants:
+	logger.info(
+		f"TenantStore reconciliado desde workspace/config.yaml para: {', '.join(_synced_tenants)}"
+	)
 
 from openagno.core.tenant_loader import TenantLoader
 
@@ -1045,6 +1052,11 @@ async def admin_reload(request: Request):
 @limiter.limit("30/minute")
 async def admin_tenant_reload(request: Request, tenant_slug: str):
 	"""Invalida la cache del tenant_loader para que se recargue en la proxima request."""
+	sync_tenant_workspace_config(
+		request.app.state.tenant_store,
+		request.app.state.workspace_store,
+		tenant_slug,
+	)
 	evicted = request.app.state.tenant_loader.reload(tenant_slug)
 	return {"status": "reloaded", "tenant_slug": tenant_slug, "evicted": evicted}
 

@@ -88,13 +88,21 @@ class TestWorkspaceOps:
         result = wt.read_workspace_file("nonexistent.yaml")
         assert "Error" in result
 
-    def test_default_model_id(self):
-        """El model_id por defecto debe ser gemini-2.5-flash (DAT-235)."""
-        import inspect
-        wt = WorkspaceTools()
-        sig = inspect.signature(wt.create_sub_agent)
-        default = sig.parameters["model_id"].default
-        assert default == "gemini-2.5-flash"
+    def test_create_sub_agent_hereda_modelo_del_workspace(self, tmp_workspace):
+        wt = WorkspaceTools(workspace_dir=tmp_workspace)
+        result = wt.create_sub_agent(
+            name="Heredado",
+            agent_id="inherit-agent",
+            role="test",
+            tools=["duckduckgo"],
+            instructions=["usa el modelo principal"],
+        )
+        assert "ERROR" not in result
+        data = yaml.safe_load((tmp_workspace / "agents" / "inherit_agent.yaml").read_text())
+        assert data["agent"]["model"] == {
+            "provider": "google",
+            "id": "gemini-2.5-flash",
+        }
 
 
 class TestMultiTenant:
@@ -244,6 +252,28 @@ class TestSubAgentManagement:
         assert "duckduckgo" in out
         assert "google" in out  # default provider
 
+    def test_list_sub_agents_inventory_incluye_disabled(self, tmp_path):
+        ws = _ws_with_tools(tmp_path)
+        wt = WorkspaceTools(workspace_dir=ws)
+        wt.create_sub_agent(
+            name="Research", agent_id="research-1", role="buscar",
+            tools=["duckduckgo"], instructions=["Investiga"],
+        )
+        wt.disable_sub_agent("research-1")
+        inventory = wt.list_sub_agents_inventory()
+        assert inventory == [
+            {
+                "id": "research-1",
+                "name": "Research",
+                "role": "buscar",
+                "model": {"provider": "google", "id": "gemini-2.5-flash"},
+                "tools": ["duckduckgo"],
+                "enabled": False,
+                "file": "agents/research_1.yaml.disabled",
+                "valid": True,
+            }
+        ]
+
     def test_disable_sub_agent_rename(self, tmp_path):
         ws = _ws_with_tools(tmp_path)
         wt = WorkspaceTools(workspace_dir=ws, tenant_slug="acme")
@@ -263,6 +293,25 @@ class TestSubAgentManagement:
         wt = WorkspaceTools(workspace_dir=ws)
         assert "ERROR" in wt.disable_sub_agent("ghost")
 
+    def test_create_sub_agent_usa_modelo_actual_si_workspace_no_es_google(self, tmp_path):
+        ws = _ws_with_tools(tmp_path, name="bedrock-subagent")
+        (ws / "config.yaml").write_text(
+            "model:\n"
+            "  provider: aws_bedrock_claude\n"
+            "  id: us.anthropic.claude-sonnet-4-6\n",
+            encoding="utf-8",
+        )
+        wt = WorkspaceTools(workspace_dir=ws)
+        wt.create_sub_agent(
+            name="Research", agent_id="research-bedrock", role="investigar",
+            tools=["duckduckgo"], instructions=["Investiga"],
+        )
+        data = yaml.safe_load((ws / "agents" / "research_bedrock.yaml").read_text())
+        assert data["agent"]["model"] == {
+            "provider": "aws_bedrock_claude",
+            "id": "us.anthropic.claude-sonnet-4-6",
+        }
+
     def test_delete_sub_agent_backup(self, tmp_path):
         ws = _ws_with_tools(tmp_path, name="del")
         wt = WorkspaceTools(workspace_dir=ws)
@@ -277,6 +326,20 @@ class TestSubAgentManagement:
         assert not target.exists()
         backups = list((tmp_path / "del" / "backups").glob("y_agent.*.bak.yaml"))
         assert len(backups) == 1
+
+    def test_delete_sub_agent_deshabilitado(self, tmp_path):
+        ws = _ws_with_tools(tmp_path, name="del-disabled")
+        wt = WorkspaceTools(workspace_dir=ws)
+        wt.create_sub_agent(
+            name="Z", agent_id="z-agent", role="z",
+            tools=[], instructions=["i"],
+        )
+        wt.disable_sub_agent("z-agent")
+        target = ws / "agents" / "z_agent.yaml.disabled"
+        assert target.exists()
+        msg = wt.delete_sub_agent("z-agent")
+        assert "eliminado" in msg
+        assert not target.exists()
 
 
 class TestTeamManagement:
@@ -304,6 +367,84 @@ class TestTeamManagement:
         assert "creado" in msg
         data = yaml.safe_load((ws / "agents" / "teams.yaml").read_text())
         assert any(t.get("id") == "t1" for t in data["teams"])
+        assert next(t for t in data["teams"] if t.get("id") == "t1")["enabled"] is True
+
+    def test_list_teams_empty(self, tmp_path):
+        ws = _ws_with_tools(tmp_path, name="teams-empty")
+        wt = WorkspaceTools(workspace_dir=ws)
+        assert wt.list_teams() == "No hay teams configurados."
+
+    def test_list_teams_muestra_info(self, tmp_path):
+        _, wt = self._prep(tmp_path, slug="teams-list")
+        wt.create_team(
+            team_id="t-list",
+            name="Team List",
+            mode="coordinate",
+            members=["agent-a", "agent-b"],
+        )
+        out = wt.list_teams()
+        assert "t-list" in out
+        assert "Team List" in out
+        assert "agent-a,agent-b" in out
+
+    def test_disable_y_delete_team(self, tmp_path):
+        ws, wt = self._prep(tmp_path, slug="team-disable-delete")
+        wt.create_team(
+            team_id="t-disable",
+            name="Disable Me",
+            mode="coordinate",
+            members=["agent-a", "agent-b"],
+        )
+        msg = wt.disable_team("t-disable")
+        assert "deshabilitado" in msg
+        inventory = wt.list_teams_inventory()
+        assert inventory[0]["enabled"] is False
+
+        msg = wt.delete_team("t-disable")
+        assert "eliminado" in msg
+        data = yaml.safe_load((ws / "agents" / "teams.yaml").read_text())
+        assert data["teams"] == []
+
+    def test_create_team_hereda_modelo_actual(self, tmp_path):
+        ws = _ws_with_tools(tmp_path, name="team-bedrock")
+        (ws / "config.yaml").write_text(
+            "model:\n"
+            "  provider: aws_bedrock_claude\n"
+            "  id: us.anthropic.claude-sonnet-4-6\n",
+            encoding="utf-8",
+        )
+        wt = WorkspaceTools(workspace_dir=ws, tenant_slug="team-bedrock")
+        wt.create_sub_agent(
+            name="A", agent_id="agent-a", role="a", tools=[], instructions=["i"],
+        )
+        wt.create_sub_agent(
+            name="B", agent_id="agent-b", role="b", tools=[], instructions=["i"],
+        )
+        msg = wt.create_team(
+            team_id="bedrock-team",
+            name="Bedrock Team",
+            mode="coordinate",
+            members=["agent-a", "agent-b"],
+        )
+        assert "ERROR" not in msg
+        data = yaml.safe_load((ws / "agents" / "teams.yaml").read_text())
+        team = next(t for t in data["teams"] if t["id"] == "bedrock-team")
+        assert team["model"] == {
+            "provider": "aws_bedrock_claude",
+            "id": "us.anthropic.claude-sonnet-4-6",
+        }
+
+    def test_create_team_requiere_model_id_si_provider_no_coincide(self, tmp_path):
+        _, wt = self._prep(tmp_path, slug="team-requires-model-id")
+        msg = wt.create_team(
+            team_id="t-provider-only",
+            name="Provider Only",
+            mode="coordinate",
+            members=["agent-a", "agent-b"],
+            model_provider="openai",
+        )
+        assert "ERROR" in msg
+        assert "model_id requerido" in msg
 
     def test_create_team_rechaza_modo_invalido(self, tmp_path):
         _, wt = self._prep(tmp_path)

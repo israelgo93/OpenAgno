@@ -79,7 +79,7 @@ The CLI wizard (`openagno init`) interactively collects `.env` values. Non-inter
 - `routes/knowledge_routes.py`: `/knowledge/upload`, `/ingest-urls`, `/list`, `/{doc_name}`, `/search`
 - `bridges/whatsapp-qr/index.js`: Baileys-based Node bridge, one session per tenant under `/sessions/:tenantSlug/*`. Routes to the OSS runtime via `POST /whatsapp-qr/incoming`
 - `workspace/`: canonical checked-in workspace content (source of truth for the repo)
-- `workspaces/`: runtime-created tenant workspace root (ignored, NOT canonical project content)
+- `workspaces/`: runtime-created tenant workspace root (ignored, NOT canonical project content). Keep it empty after E2E cleanup.
 - `openagno/templates/`: packaged starter templates used by `openagno init`
 - `docs/`: public Mintlify documentation (English at root, Spanish under `docs/es/`)
 - `ide-configs/`: copy-ready MCP configs for Cursor, VS Code, Windsurf, Claude Code
@@ -111,6 +111,7 @@ Minimum expectations by change type:
 - Public docs are English in `docs/`, Spanish mirrors in `docs/es/`. Keep them in sync when the surface changes.
 - Do not reintroduce internal planning notes or `docs_plan/` material into the tracked tree.
 - `workspace/` is the checked-in source of truth. `workspaces/` is runtime-generated, never committed, never hand-edited.
+- After E2E validation, purge generated tenant state from `workspaces/*` and `bridges/whatsapp-qr/session/*` before committing. Do not leave customer/operator personalization in the checked-in `workspace/`.
 - Do not hand-edit generated artifacts (`dist/`, `openagno.egg-info/`, `gateway.log`, `openagno.pid`) unless the user explicitly asks.
 - Preserve the tenant HTTP surface in `routes/tenant_routes.py` and the channel routers in `openagno/channels/`; do not broaden the contract casually.
 - Prefer backward-compatible changes to CLI, runtime routes, and workspace YAML shape.
@@ -126,6 +127,9 @@ Any external control plane, dashboard, or orchestrator integrates with this runt
 - `GET /tenants`, `POST /tenants`
 - `GET /tenants/{tenant_id}`, `PATCH /tenants/{tenant_id}`, `DELETE /tenants/{tenant_id}`
 - `GET /tenants/{tenant_id}/workspace`, `PUT /tenants/{tenant_id}/workspace`
+- `GET /tenants/{tenant_id}/workspace/inventory`
+- `POST /tenants/{tenant_id}/workspace/sub-agents`, `POST /tenants/{tenant_id}/workspace/sub-agents/{agent_id}/disable`, `DELETE /tenants/{tenant_id}/workspace/sub-agents/{agent_id}`
+- `POST /tenants/{tenant_id}/workspace/teams`, `POST /tenants/{tenant_id}/workspace/teams/{team_id}/disable`, `DELETE /tenants/{tenant_id}/workspace/teams/{team_id}`
 - `POST /tenants/{tenant_id}/reload`
 - `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
 - `POST /whatsapp-qr/incoming` (Baileys bridge hands off inbound messages; body carries `tenant_slug`)
@@ -136,6 +140,8 @@ Multi-tenant runtime notes:
 - `loader.load_workspace_from_dir(path)` lets the runtime load any workspace without relying on a global `WORKSPACE_DIR`. The legacy `load_workspace()` passes `WORKSPACE_DIR` automatically
 - `TenantLoader` keeps an LRU cache (`OPENAGNO_TENANT_CACHE_SIZE`, default 32). The gateway pre-populates it with the default workspace as tenant `default`
 - After every `PUT /tenants/{id}/workspace`, the caller must `POST /tenants/{id}/reload` to invalidate the cache
+- `/tenants/{id}/workspace/inventory` is the read model external control planes should use to show runtime-loaded main agent, sub-agents, teams, model, and `WorkspaceTools` state
+- Sub-agent/team mutation routes require `WorkspaceTools` to be enabled in the tenant workspace; if it is disabled, the control plane should show disabled controls instead of inventing inventory
 - The Baileys bridge isolates one session per tenant under `/sessions/:tenantSlug/*`; inbound messages go to `POST /whatsapp-qr/incoming` with `tenant_slug` in the body
 - Multi-tenant Cloud API resolves credentials from `public.whatsapp_cloud_channels` (AES-256-GCM cipher + nonce columns) using `CHANNEL_SECRETS_KEY`. See `openagno/channels/whatsapp_cloud.py`
 
@@ -169,19 +175,6 @@ Do not widen this contract casually. In particular:
 5. Update docs (English + Spanish) when a user-visible surface changes
 6. Before finishing, run the relevant validation commands and report any gaps
 7. If a task requires coordinated changes in an external system consuming this runtime, keep the OpenAgno change self-contained and clearly document any contract impact
-
-## Operational note: reload after config changes
-
-`openagno init`, `openagno add`, `openagno create agent` and manual edits of `workspace/config.yaml`, `workspace/agents/*.yaml`, `workspace/tools.yaml` or `.env` **change files on disk but do not reload the running process**. The runtime keeps the previously constructed agent in memory (same model, same channels, same keys) until it restarts. If after changing the model provider a user-facing channel starts returning "Sorry, there was an error processing your message" or stays silent, it is almost always this: the process still holds the old workspace.
-
-Restart the runtime according to how you run it:
-
-- Supervisor: `openagno restart`
-- Foreground: `Ctrl+C` then `openagno start --foreground` again
-- systemd: `sudo systemctl restart openagno`
-- Docker Compose: `docker compose restart gateway`
-
-For per-tenant workspace updates (`PUT /tenants/{tenant_id}/workspace`), use `POST /tenants/{tenant_id}/reload` instead of restarting the whole process; it invalidates only that tenant's bundle in the `TenantLoader`.
 
 ## IDE and agent integration
 

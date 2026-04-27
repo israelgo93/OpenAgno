@@ -869,6 +869,9 @@ def build_teams(
 	teams: list[Team] = []
 
 	for team_def in teams_list:
+		if isinstance(team_def, dict) and team_def.get("enabled") is False:
+			logger.info(f"Team deshabilitado omitido: {team_def.get('id', team_def.get('name', '?'))}")
+			continue
 		team_name = team_def.get("name", "Unnamed Team")
 
 		member_ids: list[str] = team_def.get("members", [])
