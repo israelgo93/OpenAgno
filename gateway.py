@@ -730,6 +730,7 @@ class WhatsAppDedupMiddleware:
 			scope["type"] != "http"
 			or scope["method"] != "POST"
 			or "/webhook" not in scope["path"]
+			or "whatsapp-cloud" in scope["path"]
 			or "whatsapp-qr" in scope["path"]
 		):
 			await self.app(scope, receive, send)
