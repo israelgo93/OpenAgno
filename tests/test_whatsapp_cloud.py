@@ -306,6 +306,16 @@ def test_webhook_verify_missing_config():
 	assert resp.status_code == 404
 
 
+def test_raw_provider_errors_are_detected_for_safe_reply():
+	raw_error = (
+		"Error code: 403 - The request signature we calculated does not match. "
+		"The Canonical String for this request should have been ..."
+	)
+
+	assert wc._is_raw_provider_error(raw_error) is True
+	assert "Canonical String" not in wc._safe_provider_error_reply()
+
+
 def test_webhook_post_invalid_signature():
 	row = _build_row(app_secret="top_secret")
 	with (

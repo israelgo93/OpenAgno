@@ -354,6 +354,24 @@ def _extract_response_text(response: Any) -> str | None:
 	return str(response)
 
 
+def _is_raw_provider_error(text: str) -> bool:
+	lowered = text.lower()
+	return (
+		"error code:" in lowered
+		or "non-retryable model provider error" in lowered
+		or "canonical string for this request" in lowered
+		or "string-to-sign" in lowered
+		or "the request signature we calculated does not match" in lowered
+	)
+
+
+def _safe_provider_error_reply() -> str:
+	return (
+		"No pude responder porque el proveedor de IA rechazo la solicitud. "
+		"Revisa la configuracion del modelo en OpenAgno Cloud e intenta de nuevo."
+	)
+
+
 def create_router(*, get_tenant_loader: Any) -> APIRouter:
 	"""Construye el router `/whatsapp-cloud/*` inyectando el TenantLoader.
 
@@ -499,6 +517,12 @@ def create_router(*, get_tenant_loader: Any) -> APIRouter:
 				logger.error(f"[{runtime_slug}] whatsapp-cloud: agente fallo: {exc}")
 				last_send_error = f"agent_error:{exc}"
 				continue
+			if reply_text and _is_raw_provider_error(reply_text):
+				logger.error(
+					f"[{runtime_slug}] whatsapp-cloud: proveedor devolvio error crudo; se envia respuesta segura"
+				)
+				last_send_error = "agent_error:model_provider_error"
+				reply_text = _safe_provider_error_reply()
 			if not reply_text:
 				continue
 			try:
