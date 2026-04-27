@@ -71,7 +71,7 @@ If this key is missing on the runtime side, `/whatsapp-cloud/*` is not mounted a
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/whatsapp-cloud/{tenant_id}/webhook` | Meta verification. Validates `hub.verify_token` against the stored (decrypted) value for that tenant and echoes `hub.challenge`. Marks `verified_at` in Supabase on success. |
-| `POST` | `/whatsapp-cloud/{tenant_id}/webhook` | Inbound event. Validates `X-Hub-Signature-256` using the tenant's App Secret, decodes the Meta payload, resolves the tenant's agent via `TenantLoader`, runs the agent, and replies over the Graph API using the tenant's Access Token. |
+| `POST` | `/whatsapp-cloud/{tenant_id}/webhook` | Inbound event. Validates `X-Hub-Signature-256` using the tenant's App Secret, decodes the Meta payload, resolves the tenant's agent via `TenantLoader`, runs the agent, and replies over the Graph API using the tenant's Access Token. Supports text, image, and audio payloads. |
 
 `tenant_id` in the path is the `public.tenants.id` UUID. A SaaS built on top of this runtime can expose that URL directly to the tenant alongside a freshly generated Verify Token, so the tenant can paste both into Meta Developer Console in a single screen.
 
@@ -109,7 +109,7 @@ RLS on the table lets only members of the owning organization read through Supab
 
 A SaaS built on top of this runtime typically implements an onboarding step where the tenant pastes its Meta credentials. A reasonable flow looks like:
 
-- A form for `Phone Number ID`, `WABA ID` (optional), `Access Token`, `App Secret` (optional), and `Graph API version` (default `v21.0`).
+- A form for `Phone Number ID`, `WABA ID` (optional), `Access Token`, `App Secret`, and `Graph API version` (default `v21.0`). The App Secret should be required for production tenants so the runtime can validate `X-Hub-Signature-256`.
 - A **Test token** action that calls Graph API `GET /{phone_number_id}?fields=id,display_phone_number,verified_name,quality_rating` and reports whether the token works.
 - On save, the **Callback URL** and **Verify Token** are surfaced to the tenant for pasting into Meta Developer Console. If the tenant does not supply a Verify Token, the SaaS can generate one automatically (32 bytes hex).
 
@@ -127,8 +127,14 @@ These fields surface in the Cloud dashboard without ever exposing the underlying
 ## Security notes
 
 - Tokens never touch disk or logs. They live in the Supabase row and are only loaded into memory for the duration of a request.
-- Multi-tenant webhook validates `X-Hub-Signature-256` with the tenant's own App Secret. Without an App Secret the runtime still accepts messages so the customer can complete the Meta handshake, but enabling signature validation is strongly recommended before going live.
+- Multi-tenant webhook validates `X-Hub-Signature-256` with the tenant's own App Secret. Hosted control planes should require the App Secret before enabling customer traffic. The runtime can still accept rows without an App Secret for development or migration, but that mode should not be used for production tenants.
 - The shared `CHANNEL_SECRETS_KEY` must not be rotated without re-encrypting existing rows. See the migration guidance in [security](/security) if you need to rotate it.
+
+### Media and audio handling
+
+For `text` messages, the body is sent directly to the tenant agent. For `image` messages, the runtime downloads the media bytes from Graph API and passes them to the model when the selected model supports image input; otherwise it returns a clear capability message. For `audio` messages, the runtime passes raw audio to audio-capable models, or uses OpenAI Whisper transcription when an OpenAI key is available. If no audio path is configured, the tenant receives a clear instruction to configure transcription or switch to a compatible model.
+
+On April 27, 2026, production validation confirmed real WhatsApp Cloud API text and audio delivery for tenant `test-datatensei`: the OSS runtime loaded `workspaces/test-datatensei`, processed incoming `tipo=text` and `tipo=audio` events, sent replies through Graph API, and left `last_error=null` with `last_send_at` populated in `public.whatsapp_cloud_channels`.
 
 ## Troubleshooting
 

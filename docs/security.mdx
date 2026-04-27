@@ -48,9 +48,10 @@ WHATSAPP_SKIP_SIGNATURE_VALIDATION=true
 - Las credenciales por tenant (`access_token`, `verify_token`, `app_secret`) se cifran con **AES-256-GCM** usando una clave maestra en la variable `CHANNEL_SECRETS_KEY` (32 bytes base64). Esta clave debe ser identica entre el runtime y cualquier sistema externo que escriba las filas cifradas en Supabase, para que ambos lados puedan cifrar y descifrar.
 - El cipher sigue el formato de Node `crypto.createCipheriv('aes-256-gcm')`: ciphertext + auth tag (16 bytes finales) en base64, con nonce en base64 almacenado aparte (`*_cipher` y `*_nonce`).
 - Si el tenant tiene `app_secret` registrado, cada `POST` valida `X-Hub-Signature-256` con ese secreto; si no coincide el runtime responde `401 invalid_signature`.
-- Si el tenant aun no registro `app_secret`, el webhook acepta mensajes sin verificar firma (solo recomendado mientras completas la configuracion inicial con Meta).
+- Los control planes hospedados deben exigir `app_secret` antes de activar trafico de clientes. El runtime conserva tolerancia para filas antiguas o desarrollo local sin `app_secret`, pero ese modo no debe usarse en produccion.
 - El Verify Token tambien se cifra en Supabase; al hacer `GET /whatsapp-cloud/{tenant_id}/webhook` se descifra, se compara contra `hub.verify_token` con `hmac.compare_digest` y en exito actualiza `verified_at` en la fila del tenant.
 - Los tokens nunca se escriben a disco ni a los logs del runtime; se cargan en memoria por request y se descartan al terminar la respuesta.
+- Si el proveedor del modelo devuelve un error crudo, el webhook no lo reenvia literalmente por WhatsApp. El detalle queda en logs/telemetria y el usuario recibe una respuesta segura.
 
 Para generar la clave maestra:
 
