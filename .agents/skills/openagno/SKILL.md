@@ -99,6 +99,9 @@ Tenants (public multi-tenant HTTP contract):
 - `GET /tenants`, `POST /tenants`
 - `GET/PATCH/DELETE /tenants/{tenant_id}`
 - `GET/PUT /tenants/{tenant_id}/workspace`
+- `GET /tenants/{tenant_id}/workspace/inventory`
+- `POST /tenants/{tenant_id}/workspace/sub-agents`, `POST /tenants/{tenant_id}/workspace/sub-agents/{agent_id}/disable`, `DELETE /tenants/{tenant_id}/workspace/sub-agents/{agent_id}`
+- `POST /tenants/{tenant_id}/workspace/teams`, `POST /tenants/{tenant_id}/workspace/teams/{team_id}/disable`, `DELETE /tenants/{tenant_id}/workspace/teams/{team_id}`
 - `POST /tenants/{tenant_id}/reload`
 - `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
 
@@ -130,6 +133,13 @@ Auto-generated:
 2. Update `workspace/agents/teams.yaml` to add the new member if the team should use it
 3. `openagno validate` and restart the runtime
 
+### Support a Cloud/runtime inventory UI
+
+1. Keep `GET /tenants/{tenant_id}/workspace/inventory` as the source of truth for what is loaded in a tenant runtime.
+2. Make sub-agent and team writes through the tenant workspace routes only; do not let a control plane edit files inside `workspaces/` directly.
+3. If `WorkspaceTools` is not enabled in the tenant's `tools.yaml`, mutation controls should stay disabled and the UI should report that state honestly.
+4. After workspace changes, call `POST /tenants/{tenant_id}/reload` before expecting runtime-loaded state to change.
+
 ### Add a new channel
 
 1. Decide if it fits an Agno interface (WhatsApp, Slack, Telegram, AG-UI, A2A). If yes, activate it with `openagno add <channel>` and add the env vars
@@ -146,25 +156,6 @@ Auto-generated:
 1. `openagno validate`
 2. `curl http://127.0.0.1:8000/admin/health` &mdash; check agents loaded, model, channel state
 3. `journalctl -u openagno -n 100 --no-pager` if running under systemd
-
-### Symptom: message channels return "Sorry, there was an error processing your message" or stay silent after editing config
-
-Almost always means the runtime is still holding the previous workspace in memory. `openagno init`, `openagno add`, `openagno create agent` and manual edits of `workspace/*.yaml` or `.env` do **not** reload the process. You must restart the runtime:
-
-- Supervisor: `openagno restart`
-- Foreground: Ctrl+C and start again
-- systemd: `sudo systemctl restart openagno`
-- Docker Compose: `docker compose restart gateway`
-
-After the restart, confirm the new config is loaded with:
-
-```bash
-curl http://127.0.0.1:8000/admin/health
-```
-
-The `model` field in the response must reflect what you set in `workspace/config.yaml`. If it still shows the old provider/id, the restart did not pick up the config (check `OPENAGNO_ROOT` or which process is actually bound to port 8000).
-
-For per-tenant edits, prefer `POST /tenants/{tenant_id}/reload` over a full restart.
 
 ## Public documentation endpoints
 

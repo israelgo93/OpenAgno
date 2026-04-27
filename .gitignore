@@ -16,6 +16,8 @@ ENV/
 
 # Environment variables
 .env
+.env.*
+.env.back
 workspace/integrations/**/config.env
 
 # IDE
@@ -43,6 +45,9 @@ tmp/
 # Knowledge uploads
 workspace/knowledge/docs/*.pdf
 workspace/knowledge/docs/*.docx
+
+# Runtime-generated tenant workspaces
+workspaces/
 
 # Logs
 *.log

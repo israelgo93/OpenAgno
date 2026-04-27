@@ -52,3 +52,14 @@ Detalles utiles:
 - Mantén `workspace` y `scheduler_mgmt` solo en entornos donde realmente quieres auto-modificacion del sistema.
 - Activa `shell`, `python_tools` y `file_tools` solo en entornos controlados.
 - Si una tool necesita secretos, prefiere cargarlos desde `.env` o desde una integracion declarativa.
+
+## WorkspaceTools y control planes externos
+
+`workspace` habilita `WorkspaceTools`, que permite inspeccionar y actualizar el workspace activo del tenant. Un control plane externo debe usar las rutas HTTP del tenant en lugar de editar archivos en `workspaces/` directamente:
+
+- `GET /tenants/{tenant_id}/workspace/inventory` para leer agente principal, sub-agentes, teams y estado de `WorkspaceTools`
+- `POST /tenants/{tenant_id}/workspace/sub-agents` para crear o actualizar sub-agentes
+- `POST /tenants/{tenant_id}/workspace/teams` para crear o actualizar teams
+- `POST /tenants/{tenant_id}/reload` despues de cambios para que el runtime cargado refleje el workspace actualizado
+
+Si `WorkspaceTools` esta deshabilitado, el control plane debe mostrar controles deshabilitados y no inventar inventario runtime.

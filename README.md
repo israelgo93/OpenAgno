@@ -27,7 +27,7 @@ The runtime is self-contained: you can install it from PyPI, run it locally, or 
 - `routes` FastAPI route builders for admin, tenants, knowledge, channels, and integrations
 - `tools` optional runtime tools such as workspace and scheduler management
 - `workspace` the default declarative workspace loaded by the runtime
-- `workspaces` provisioned tenant workspaces when the local workspace store backend is used
+- `workspaces` provisioned tenant workspaces when the local workspace store backend is used; this directory is ignored and should be empty after test cleanup
 - `deploy` deployment scripts, including systemd installation
 - `bridges` auxiliary channel bridges such as the WhatsApp QR bridge
 - `docs` Mintlify documentation, including English and Spanish trees
@@ -181,7 +181,17 @@ Tenant routes:
 - `DELETE /tenants/{tenant_id}`
 - `GET /tenants/{tenant_id}/workspace`
 - `PUT /tenants/{tenant_id}/workspace`
+- `GET /tenants/{tenant_id}/workspace/inventory`
+- `POST /tenants/{tenant_id}/workspace/sub-agents`
+- `POST /tenants/{tenant_id}/workspace/sub-agents/{agent_id}/disable`
+- `DELETE /tenants/{tenant_id}/workspace/sub-agents/{agent_id}`
+- `POST /tenants/{tenant_id}/workspace/teams`
+- `POST /tenants/{tenant_id}/workspace/teams/{team_id}/disable`
+- `DELETE /tenants/{tenant_id}/workspace/teams/{team_id}`
+- `POST /tenants/{tenant_id}/reload`
 - `POST /tenants/{tenant_id}/agents/{agent_id}/runs`
+
+The workspace inventory and mutation routes are used by external control planes such as OpenAgnoCloud to display the tenant's loaded sub-agents and teams without reaching into runtime internals. These routes only expose the HTTP contract; billing, signup, and hosted customer dashboards stay outside this OSS repo.
 
 Knowledge routes:
 
@@ -228,6 +238,17 @@ Key runtime behaviors:
 This is the public multi-tenant contract any external control plane can consume.
 
 The runtime should stay focused on execution. Plan policy, customer onboarding, billing entitlements, and operator rollout logic should live in whatever layer sits on top of this runtime and be translated into runtime configuration through the tenant HTTP contract.
+
+## Test-state cleanup
+
+Runtime-created tenant state is not canonical source. After local or hosted E2E validation, remove generated tenant workspaces and QR sessions before committing:
+
+```bash
+rm -rf workspaces/<test-slug>
+rm -rf bridges/whatsapp-qr/session/<test-slug>
+```
+
+The April 27, 2026 Cloud/OSS validation purged the temporary `codex-*`, `datatensei-test`, and QR-session state after confirming WhatsApp Cloud API token probing and encrypted credential storage. The checked-in `workspace/` directory was restored to the default template state and should not carry customer or operator personalization.
 
 ## Knowledge and vector search
 
@@ -370,8 +391,6 @@ Expected results:
 ## Current release posture
 
 The repository content reflects the `1.3.0` closeout work. Publishing to PyPI remains a separate operational step triggered manually by the maintainer when the `v1.3.0` wheel is ready to go live.
-
-> 📋 Last verified by Magno Agent on April 22, 2026.
 
 ## License
 

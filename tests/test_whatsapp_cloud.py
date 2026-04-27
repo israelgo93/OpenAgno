@@ -186,6 +186,18 @@ def test_extract_messages_filters_non_text():
 								{"id": "m2", "from": "5491111", "type": "reaction"},
 								{"id": "m3", "from": "5492222", "type": "text", "text": {"body": ""}},
 								{"id": "m4", "from": "5493333", "type": "text", "text": {"body": "ok"}},
+								{
+									"id": "m5",
+									"from": "5494444",
+									"type": "image",
+									"image": {"id": "media-img", "mime_type": "image/jpeg", "caption": "mira"},
+								},
+								{
+									"id": "m6",
+									"from": "5495555",
+									"type": "audio",
+									"audio": {"id": "media-audio", "mime_type": "audio/ogg"},
+								},
 							]
 						}
 					}
@@ -194,7 +206,16 @@ def test_extract_messages_filters_non_text():
 		],
 	}
 	msgs = wc._extract_messages(payload)
-	assert [m["id"] for m in msgs] == ["m1", "m4"]
+	assert [m["id"] for m in msgs] == ["m1", "m4", "m5", "m6"]
+	assert msgs[2] == {
+		"id": "m5",
+		"from": "5494444",
+		"type": "image",
+		"text": "mira",
+		"media_id": "media-img",
+		"mime_type": "image/jpeg",
+	}
+	assert msgs[3]["media_id"] == "media-audio"
 
 
 def _build_app(row: tuple | None, tenant_loader: Any | None = None):
@@ -203,6 +224,41 @@ def _build_app(row: tuple | None, tenant_loader: Any | None = None):
 	router = wc.create_router(get_tenant_loader=lambda: app.state.tenant_loader)
 	app.include_router(router)
 	return app
+
+
+class _AgentResponse:
+	def __init__(self, content: str):
+		self.content = content
+
+
+class _FakeAgent:
+	def __init__(self):
+		self.calls: list[tuple[str, dict[str, Any]]] = []
+
+	async def arun(self, text: str, **kwargs):
+		self.calls.append((text, kwargs))
+		return _AgentResponse("respuesta del agente")
+
+
+class _FakeTenantLoader:
+	def __init__(self, model: dict[str, Any] | None = None):
+		self.agent = _FakeAgent()
+		self.model = model or {"provider": "openai", "id": "gpt-5-mini"}
+
+	def get_or_load(self, _slug: str):
+		return {
+			"config": {"model": self.model},
+			"main_agent": self.agent,
+		}
+
+
+def _wa_body(messages: list[dict[str, Any]]) -> bytes:
+	return json.dumps(
+		{
+			"object": "whatsapp_business_account",
+			"entry": [{"changes": [{"value": {"messages": messages}}]}],
+		}
+	).encode()
 
 
 def test_webhook_verify_ok():
@@ -283,3 +339,126 @@ def test_webhook_post_no_app_secret_accepts_any_signature():
 		)
 	assert resp.status_code == 200
 	assert resp.json()["status"] == "no_messages"
+
+
+def test_webhook_post_text_runs_tenant_agent_and_sends_reply():
+	row = _build_row(app_secret=None, runtime_slug="tenant-api")
+	loader = _FakeTenantLoader()
+	sent: list[tuple[str, str]] = []
+
+	async def _fake_send_text(_cfg, to: str, text: str):
+		sent.append((to, text))
+		return {"messages": [{"id": "wamid.sent"}]}
+
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+		patch.object(wc, "send_text", _fake_send_text),
+	):
+		app = _build_app(row, tenant_loader=loader)
+		client = TestClient(app)
+		resp = client.post(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			content=_wa_body([
+				{"id": "m-text", "from": "5491111", "type": "text", "text": {"body": "hola"}},
+			]),
+			headers={"content-type": "application/json"},
+		)
+
+	assert resp.status_code == 200
+	assert resp.json()["sent"] == 1
+	assert loader.agent.calls == [
+		(
+			"hola",
+			{"user_id": "tenant-api:5491111", "session_id": "tenant-api:5491111"},
+		)
+	]
+	assert sent == [("5491111", "respuesta del agente")]
+
+
+def test_webhook_post_image_downloads_media_for_multimodal_agent():
+	row = _build_row(app_secret=None, runtime_slug="tenant-api")
+	loader = _FakeTenantLoader(model={"provider": "openai", "id": "gpt-5-mini"})
+
+	async def _fake_download(_cfg, media_id: str):
+		assert media_id == "media-image"
+		return b"jpeg-bytes", "image/jpeg"
+
+	async def _fake_send_text(_cfg, _to: str, _text: str):
+		return {"messages": [{"id": "wamid.sent"}]}
+
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+		patch.object(wc, "download_media", _fake_download),
+		patch.object(wc, "send_text", _fake_send_text),
+	):
+		app = _build_app(row, tenant_loader=loader)
+		client = TestClient(app)
+		resp = client.post(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			content=_wa_body([
+				{
+					"id": "m-image",
+					"from": "5491111",
+					"type": "image",
+					"image": {"id": "media-image", "mime_type": "image/jpeg"},
+				},
+			]),
+			headers={"content-type": "application/json"},
+		)
+
+	assert resp.status_code == 200
+	text, kwargs = loader.agent.calls[0]
+	assert text == "Describe o analiza esta imagen"
+	assert kwargs["images"][0].content == b"jpeg-bytes"
+	assert kwargs["images"][0].mime_type == "image/jpeg"
+
+
+def test_webhook_post_audio_transcribes_when_model_has_no_audio_native():
+	row = _build_row(app_secret=None, runtime_slug="tenant-api")
+	loader = _FakeTenantLoader(
+		model={
+			"provider": "openai",
+			"id": "gpt-5-mini",
+			"api_key": "tenant-openai-key",
+		}
+	)
+
+	async def _fake_download(_cfg, media_id: str):
+		assert media_id == "media-audio"
+		return b"ogg-bytes", "audio/ogg"
+
+	async def _fake_transcribe(audio_bytes: bytes, mime_type: str, api_key: str):
+		assert audio_bytes == b"ogg-bytes"
+		assert mime_type == "audio/ogg"
+		assert api_key == "tenant-openai-key"
+		return "audio transcrito"
+
+	async def _fake_send_text(_cfg, _to: str, _text: str):
+		return {"messages": [{"id": "wamid.sent"}]}
+
+	with (
+		_patch_db(row),
+		patch.object(wc, "_touch_column", lambda *_a, **_k: None),
+		patch.object(wc, "download_media", _fake_download),
+		patch.object(wc, "transcribe_audio_with_openai", _fake_transcribe),
+		patch.object(wc, "send_text", _fake_send_text),
+	):
+		app = _build_app(row, tenant_loader=loader)
+		client = TestClient(app)
+		resp = client.post(
+			"/whatsapp-cloud/11111111-1111-1111-1111-111111111111/webhook",
+			content=_wa_body([
+				{
+					"id": "m-audio",
+					"from": "5491111",
+					"type": "audio",
+					"audio": {"id": "media-audio", "mime_type": "audio/ogg"},
+				},
+			]),
+			headers={"content-type": "application/json"},
+		)
+
+	assert resp.status_code == 200
+	assert loader.agent.calls[0][0] == "[Transcripcion de audio]: audio transcrito"

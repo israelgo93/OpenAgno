@@ -77,6 +77,9 @@ class WorkspaceTools(Toolkit):
         self.register(self.disable_sub_agent)
         self.register(self.delete_sub_agent)
         self.register(self.create_team)
+        self.register(self.list_teams)
+        self.register(self.disable_team)
+        self.register(self.delete_team)
         self.register(self.update_instructions)
         self.register(self.toggle_tool)
         self.register(self.enable_tool)
@@ -117,6 +120,98 @@ class WorkspaceTools(Toolkit):
         except Exception:
             return set()
 
+    def _is_tool_enabled(self, tool_name: str) -> bool:
+        tools_path = self._workspace_dir / "tools.yaml"
+        if not tools_path.exists():
+            return False
+        try:
+            data = yaml.safe_load(tools_path.read_text(encoding="utf-8")) or {}
+            for section in ("builtin", "optional"):
+                for tool in data.get(section, []):
+                    if tool.get("name") == tool_name:
+                        return tool.get("enabled", True) is not False
+        except Exception:
+            return False
+        return False
+
+    def _current_model_defaults(self) -> tuple[str, str]:
+        """Lee provider/id actuales desde config.yaml.
+
+        Si el workspace no declara modelo valido, cae al default historico para
+        mantener compatibilidad con workspaces minimos de tests/CLI.
+        """
+        fallback = ("google", "gemini-2.5-flash")
+        config_path = self._workspace_dir / "config.yaml"
+        if not config_path.exists():
+            return fallback
+        try:
+            data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return fallback
+
+        model = data.get("model")
+        if not isinstance(model, dict):
+            return fallback
+
+        provider = model.get("provider")
+        model_id = model.get("id")
+        if (
+            isinstance(provider, str)
+            and provider in VALID_PROVIDERS
+            and isinstance(model_id, str)
+            and model_id.strip()
+        ):
+            return provider, model_id.strip()
+        return fallback
+
+    def _main_agent_id(self) -> str:
+        config_path = self._workspace_dir / "config.yaml"
+        if not config_path.exists():
+            return "agnobot-main"
+        try:
+            data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return "agnobot-main"
+        agent = data.get("agent")
+        if isinstance(agent, dict):
+            agent_id = agent.get("id")
+            if isinstance(agent_id, str) and agent_id.strip():
+                return agent_id.strip()
+        return "agnobot-main"
+
+    def _resolve_model_selection(
+        self,
+        model_provider: Optional[str],
+        model_id: Optional[str],
+    ) -> tuple[str, str] | str:
+        """Resuelve el modelo de una nueva entidad desde el workspace actual.
+
+        - Sin argumentos: hereda provider/id del workspace principal.
+        - Solo model_id: mantiene el provider actual.
+        - Solo model_provider: solo se permite si coincide con el provider
+          actual; si no, se exige model_id explicito para evitar mezclas.
+        """
+        current_provider, current_id = self._current_model_defaults()
+        if model_provider is not None and model_provider not in VALID_PROVIDERS:
+            return (
+                f"ERROR: Provider '{model_provider}' no valido. "
+                f"Usa uno de: {', '.join(sorted(VALID_PROVIDERS))}"
+            )
+        resolved_provider = model_provider or current_provider
+
+        if model_id:
+            resolved_id = model_id
+        elif model_provider is None or model_provider == current_provider:
+            resolved_id = current_id
+        else:
+            return (
+                "ERROR: model_id requerido cuando model_provider no coincide "
+                "con el workspace actual. "
+                f"Workspace actual: {current_provider}/{current_id}"
+            )
+
+        return resolved_provider, resolved_id
+
     # -- lectura/escritura generica ------------------------------------------
 
     def read_workspace_file(self, filename: str) -> str:
@@ -155,16 +250,22 @@ class WorkspaceTools(Toolkit):
     def create_sub_agent(
         self, name: str, agent_id: str, role: str,
         tools: list[str], instructions: list[str],
-        model_provider: str = "google", model_id: str = "gemini-2.5-flash",
+        model_provider: str | None = None, model_id: str | None = None,
     ) -> str:
         """Crea un sub-agente en workspace/agents/.
 
-        Valida provider y tools antes de crear el YAML (F7).
+        Valida provider y tools antes de crear el YAML (F7). Si no se pasa
+        modelo, hereda el provider/id del workspace principal actual.
         """
+        resolved_model = self._resolve_model_selection(model_provider, model_id)
+        if isinstance(resolved_model, str):
+            return resolved_model
+        resolved_provider, resolved_id = resolved_model
+
         # F7 — 7.4.3: Validar provider
-        if model_provider not in VALID_PROVIDERS:
+        if resolved_provider not in VALID_PROVIDERS:
             return (
-                f"ERROR: Provider '{model_provider}' no valido. "
+                f"ERROR: Provider '{resolved_provider}' no valido. "
                 f"Usa uno de: {', '.join(sorted(VALID_PROVIDERS))}"
             )
 
@@ -181,7 +282,7 @@ class WorkspaceTools(Toolkit):
         agent_data = {
             "agent": {
                 "name": name, "id": agent_id, "role": role,
-                "model": {"provider": model_provider, "id": model_id},
+                "model": {"provider": resolved_provider, "id": resolved_id},
                 "tools": tools, "instructions": instructions,
                 "config": {"tool_call_limit": 5, "enable_agentic_memory": False, "markdown": True},
             },
@@ -235,24 +336,67 @@ class WorkspaceTools(Toolkit):
             if f.name != "teams.yaml"
         )
 
+    def _list_disabled_agent_files(self) -> list[Path]:
+        agents_dir = self._agents_dir()
+        if not agents_dir.exists():
+            return []
+        return sorted(f for f in agents_dir.glob("*.yaml.disabled"))
+
+    def _sub_agent_inventory_entry(self, path: Path, *, enabled: bool) -> dict[str, Any]:
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            return {
+                "id": path.stem,
+                "name": path.name,
+                "role": "",
+                "model": {},
+                "tools": [],
+                "enabled": enabled,
+                "file": str(path.relative_to(self._workspace_dir)),
+                "valid": False,
+            }
+        agent = data.get("agent", {})
+        model = agent.get("model", {})
+        tools = agent.get("tools", [])
+        return {
+            "id": agent.get("id", path.name.removesuffix(".yaml").removesuffix(".disabled")),
+            "name": agent.get("name", "?"),
+            "role": agent.get("role", ""),
+            "model": model if isinstance(model, dict) else {},
+            "tools": tools if isinstance(tools, list) else [],
+            "enabled": enabled,
+            "file": str(path.relative_to(self._workspace_dir)),
+            "valid": isinstance(agent, dict) and bool(agent),
+        }
+
+    def list_sub_agents_inventory(self) -> list[dict[str, Any]]:
+        """Inventario estructurado de sub-agentes del workspace del tenant."""
+        entries = [
+            self._sub_agent_inventory_entry(path, enabled=True)
+            for path in self._list_agent_files()
+        ]
+        entries.extend(
+            self._sub_agent_inventory_entry(path, enabled=False)
+            for path in self._list_disabled_agent_files()
+        )
+        return sorted(entries, key=lambda entry: str(entry.get("id", "")))
+
     def list_sub_agents(self) -> str:
         """Lista los sub-agentes configurados en workspace/agents/*.yaml."""
-        files = self._list_agent_files()
-        if not files:
+        entries = [entry for entry in self.list_sub_agents_inventory() if entry["enabled"]]
+        if not entries:
             return "No hay sub-agentes configurados."
         lines: list[str] = []
-        for f in files:
-            try:
-                data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-            except yaml.YAMLError:
-                lines.append(f"- {f.name} (YAML invalido)")
+        for entry in entries:
+            if not entry.get("valid", False):
+                lines.append(f"- {entry.get('file', '?')} (YAML invalido)")
                 continue
-            agent = data.get("agent", {})
-            model = agent.get("model", {})
-            tools = agent.get("tools", [])
+            model = entry.get("model", {})
+            tools = entry.get("tools", [])
             lines.append(
-                f"- id={agent.get('id', f.stem)} | name={agent.get('name', '?')} | "
-                f"role={agent.get('role', '?')} | "
+                f"- id={entry.get('id', '?')} | name={entry.get('name', '?')} | "
+                f"role={entry.get('role', '?')} | "
                 f"model={model.get('provider', '?')}/{model.get('id', '?')} | "
                 f"tools={','.join(tools) if tools else '-'}"
             )
@@ -262,7 +406,7 @@ class WorkspaceTools(Toolkit):
         agents_dir = self._agents_dir()
         if not agents_dir.exists():
             return None
-        for f in agents_dir.glob("*.yaml"):
+        for f in list(agents_dir.glob("*.yaml")) + list(agents_dir.glob("*.yaml.disabled")):
             if f.name == "teams.yaml":
                 continue
             try:
@@ -273,13 +417,18 @@ class WorkspaceTools(Toolkit):
                 return f
         # Fallback: match por nombre de archivo
         candidate = agents_dir / f"{agent_id.replace('-', '_')}.yaml"
-        return candidate if candidate.exists() else None
+        if candidate.exists():
+            return candidate
+        disabled_candidate = candidate.with_suffix(candidate.suffix + ".disabled")
+        return disabled_candidate if disabled_candidate.exists() else None
 
     def disable_sub_agent(self, agent_id: str) -> str:
         """Soft-disable: renombra agents/<id>.yaml a .yaml.disabled."""
         path = self._resolve_agent_file(agent_id)
         if path is None:
             return f"ERROR: sub-agente '{agent_id}' no encontrado."
+        if path.name.endswith(".disabled"):
+            return f"ERROR: sub-agente '{agent_id}' ya esta deshabilitado."
         disabled = path.with_suffix(path.suffix + ".disabled")
         path.rename(disabled)
         return (
@@ -308,14 +457,14 @@ class WorkspaceTools(Toolkit):
         mode: str,
         members: list[str],
         instructions: list[str] | None = None,
-        model_provider: str = "google",
-        model_id: str = "gemini-2.5-flash",
+        model_provider: str | None = None,
+        model_id: str | None = None,
     ) -> str:
         """Crea o actualiza un team en workspace/agents/teams.yaml.
 
         - `mode` debe estar en {coordinate, route, broadcast, tasks}.
         - `members` son IDs de sub-agentes existentes (o 'agnobot-main').
-        - `model_provider` debe estar en VALID_PROVIDERS.
+        - Si no se pasa modelo, hereda el provider/id del workspace principal.
         Hace upsert por team_id: si ya existe, reemplaza su definicion.
         """
         if mode not in VALID_TEAM_MODES:
@@ -323,16 +472,21 @@ class WorkspaceTools(Toolkit):
                 f"ERROR: mode '{mode}' no valido. "
                 f"Usa uno de: {', '.join(sorted(VALID_TEAM_MODES))}"
             )
-        if model_provider not in VALID_PROVIDERS:
+        resolved_model = self._resolve_model_selection(model_provider, model_id)
+        if isinstance(resolved_model, str):
+            return resolved_model
+        resolved_provider, resolved_id = resolved_model
+
+        if resolved_provider not in VALID_PROVIDERS:
             return (
-                f"ERROR: Provider '{model_provider}' no valido. "
+                f"ERROR: Provider '{resolved_provider}' no valido. "
                 f"Usa uno de: {', '.join(sorted(VALID_PROVIDERS))}"
             )
         if not isinstance(members, list) or len(members) < 2:
             return "ERROR: un team requiere al menos 2 miembros."
 
         # Validar que los miembros existen como sub-agente (o son el main)
-        known_ids = {"agnobot-main"}
+        known_ids = {self._main_agent_id()}
         for f in self._list_agent_files():
             try:
                 data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
@@ -363,9 +517,10 @@ class WorkspaceTools(Toolkit):
         new_entry = {
             "id": team_id,
             "name": name,
+            "enabled": True,
             "mode": mode,
             "members": list(members),
-            "model": {"provider": model_provider, "id": model_id},
+            "model": {"provider": resolved_provider, "id": resolved_id},
             "instructions": list(instructions or []),
         }
 
@@ -387,6 +542,124 @@ class WorkspaceTools(Toolkit):
             f"Team '{team_id}' {verb}{self._tenant_suffix()} "
             f"(mode={mode}, miembros={members}). {backup_msg}. Reload necesario."
         )
+
+    def _read_teams_document(self) -> dict[str, Any] | str:
+        teams_path = self._workspace_dir / "agents" / "teams.yaml"
+        if not teams_path.exists():
+            return {"teams": []}
+
+        try:
+            return yaml.safe_load(teams_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            return "ERROR: teams.yaml invalido."
+
+    def list_teams_inventory(self) -> list[dict[str, Any]]:
+        """Inventario estructurado de teams declarados para este workspace."""
+        data = self._read_teams_document()
+        if isinstance(data, str):
+            return []
+
+        teams = data.get("teams", [])
+        if not isinstance(teams, list):
+            return []
+
+        entries: list[dict[str, Any]] = []
+        for entry in teams:
+            if not isinstance(entry, dict):
+                continue
+            model = entry.get("model", {})
+            members = entry.get("members", [])
+            entries.append({
+                "id": entry.get("id", "?"),
+                "name": entry.get("name", "?"),
+                "mode": entry.get("mode", "?"),
+                "members": members if isinstance(members, list) else [],
+                "model": model if isinstance(model, dict) else {},
+                "enabled": entry.get("enabled", True) is not False,
+            })
+        return sorted(entries, key=lambda entry: str(entry.get("id", "")))
+
+    def list_teams(self) -> str:
+        """Lista los teams declarados en workspace/agents/teams.yaml."""
+        data = self._read_teams_document()
+        if isinstance(data, str):
+            return "ERROR: teams.yaml invalido."
+
+        teams = self.list_teams_inventory()
+        if not teams:
+            return "No hay teams configurados."
+
+        lines: list[str] = []
+        for entry in teams:
+            model = entry.get("model", {})
+            members = entry.get("members", [])
+            lines.append(
+                f"- id={entry.get('id', '?')} | name={entry.get('name', '?')} | "
+                f"enabled={entry.get('enabled', True)} | "
+                f"mode={entry.get('mode', '?')} | "
+                f"members={','.join(members) if isinstance(members, list) and members else '-'} | "
+                f"model={model.get('provider', '?')}/{model.get('id', '?')}"
+            )
+
+        return "\n".join(lines) if lines else "No hay teams configurados."
+
+    def disable_team(self, team_id: str) -> str:
+        """Soft-disable: marca enabled=false en agents/teams.yaml."""
+        teams_path = self._workspace_dir / "agents" / "teams.yaml"
+        data = self._read_teams_document()
+        if isinstance(data, str):
+            return data
+        teams = data.get("teams", [])
+        if not isinstance(teams, list):
+            return "ERROR: teams.yaml invalido."
+        for entry in teams:
+            if isinstance(entry, dict) and entry.get("id") == team_id:
+                backup_msg = self._backup(teams_path)
+                entry["enabled"] = False
+                teams_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(teams_path, "w") as f:
+                    yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+                return (
+                    f"Team '{team_id}' deshabilitado{self._tenant_suffix()}. "
+                    f"{backup_msg}. Reload necesario."
+                )
+        return f"ERROR: team '{team_id}' no encontrado."
+
+    def delete_team(self, team_id: str) -> str:
+        """Elimina definitivamente un team de agents/teams.yaml (con backup)."""
+        teams_path = self._workspace_dir / "agents" / "teams.yaml"
+        data = self._read_teams_document()
+        if isinstance(data, str):
+            return data
+        teams = data.get("teams", [])
+        if not isinstance(teams, list):
+            return "ERROR: teams.yaml invalido."
+        next_teams = [
+            entry for entry in teams
+            if not (isinstance(entry, dict) and entry.get("id") == team_id)
+        ]
+        if len(next_teams) == len(teams):
+            return f"ERROR: team '{team_id}' no encontrado."
+        backup_msg = self._backup(teams_path)
+        data["teams"] = next_teams
+        teams_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(teams_path, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+        return (
+            f"Team '{team_id}' eliminado{self._tenant_suffix()}. "
+            f"{backup_msg}. Reload necesario."
+        )
+
+    def workspace_inventory(self) -> dict[str, Any]:
+        """Inventario estructurado tenant-scoped sin tocar el workspace global."""
+        return {
+            "tenant_slug": self._tenant_slug,
+            "workspace_dir": str(self._workspace_dir),
+            "main_agent": {"id": self._main_agent_id()},
+            "workspace_tools_enabled": self._is_tool_enabled("workspace"),
+            "sub_agents": self.list_sub_agents_inventory(),
+            "teams": self.list_teams_inventory(),
+        }
 
     # -- MCP servers ---------------------------------------------------------
 

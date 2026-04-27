@@ -41,7 +41,17 @@ Si defines `OPENAGNO_API_KEY`, estas rutas exigen el header `X-API-Key`.
 | `DELETE` | `/tenants/{tenant_id}` | Desactiva el tenant |
 | `GET` | `/tenants/{tenant_id}/workspace` | Lee la configuracion del workspace |
 | `PUT` | `/tenants/{tenant_id}/workspace` | Actualiza la configuracion del workspace |
+| `GET` | `/tenants/{tenant_id}/workspace/inventory` | Lee agente principal, sub-agentes, teams, modelo y estado de WorkspaceTools cargados |
+| `POST` | `/tenants/{tenant_id}/workspace/sub-agents` | Crea o actualiza un sub-agente del tenant mediante WorkspaceTools |
+| `POST` | `/tenants/{tenant_id}/workspace/sub-agents/{agent_id}/disable` | Deshabilita un sub-agente del tenant |
+| `DELETE` | `/tenants/{tenant_id}/workspace/sub-agents/{agent_id}` | Elimina un sub-agente del tenant |
+| `POST` | `/tenants/{tenant_id}/workspace/teams` | Crea o actualiza un team del tenant mediante WorkspaceTools |
+| `POST` | `/tenants/{tenant_id}/workspace/teams/{team_id}/disable` | Deshabilita un team del tenant |
+| `DELETE` | `/tenants/{tenant_id}/workspace/teams/{team_id}` | Elimina un team del tenant |
+| `POST` | `/tenants/{tenant_id}/reload` | Invalida y recarga la cache runtime del tenant |
 | `POST` | `/tenants/{tenant_id}/agents/{agent_id}/runs` | Ejecuta un agente con `knowledge_filters` tenant-aware |
+
+Las rutas de mutacion de workspace estan pensadas para control planes externos que administran tenants via HTTP. Mantene `WorkspaceTools` habilitado para tenants que pueden auto-configurar sub-agentes y teams, y ejecuta reload despues de las mutaciones antes de esperar cambios en el inventario cargado.
 
 ## WhatsApp QR
 

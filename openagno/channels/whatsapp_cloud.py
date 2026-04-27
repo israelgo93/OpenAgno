@@ -26,6 +26,7 @@ import hashlib
 import hmac
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -217,11 +218,83 @@ async def send_text(cfg: WhatsAppCloudConfig, to: str, text: str) -> dict[str, A
 	return resp.json()
 
 
-def _extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
-	"""Extrae mensajes 'text' del payload estandar de Meta.
+async def download_media(cfg: WhatsAppCloudConfig, media_id: str) -> tuple[bytes, str | None]:
+	"""Descarga media entrante desde Graph API.
 
-	Ignora statuses (delivered/read), reactions y otros tipos no conversacionales.
-	Retorna una lista de dicts con keys: from, text, id.
+	Meta entrega solo un `media_id` en el webhook. Primero se consulta el
+	descriptor del media y luego se descarga la URL firmada usando el mismo
+	Access Token del phone number.
+	"""
+	metadata_url = f"{GRAPH_API_HOST}/{cfg.graph_api_version}/{media_id}"
+	headers = {"Authorization": f"Bearer {cfg.access_token}"}
+	async with httpx.AsyncClient(timeout=30) as client:
+		meta_resp = await client.get(metadata_url, headers=headers)
+		if meta_resp.status_code >= 400:
+			raise RuntimeError(f"graph_media_meta_{meta_resp.status_code}: {meta_resp.text[:300]}")
+		metadata = meta_resp.json()
+		media_url = metadata.get("url")
+		if not isinstance(media_url, str) or not media_url:
+			raise RuntimeError("graph_media_missing_url")
+		mime_type = metadata.get("mime_type") if isinstance(metadata.get("mime_type"), str) else None
+
+		media_resp = await client.get(media_url, headers=headers)
+		if media_resp.status_code >= 400:
+			raise RuntimeError(f"graph_media_download_{media_resp.status_code}: {media_resp.text[:300]}")
+		return media_resp.content, mime_type
+
+
+async def transcribe_audio_with_openai(
+	audio_bytes: bytes,
+	mime_type: str,
+	api_key: str,
+	*,
+	model: str = "gpt-4o-mini-transcribe",
+) -> str | None:
+	"""Transcribe audio cuando el modelo del tenant no soporta audio nativo."""
+	from openai import OpenAI
+
+	suffix_map = {
+		"audio/ogg": ".ogg",
+		"audio/opus": ".ogg",
+		"audio/mpeg": ".mp3",
+		"audio/mp4": ".m4a",
+		"audio/x-m4a": ".m4a",
+		"audio/wav": ".wav",
+		"audio/webm": ".webm",
+		"audio/amr": ".amr",
+		"audio/aac": ".aac",
+	}
+	root = (mime_type or "").lower().split(";")[0].strip()
+	suffix = suffix_map.get(root, ".ogg")
+
+	def _run() -> str | None:
+		tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+		tmp.write(audio_bytes)
+		tmp.close()
+		try:
+			client = OpenAI(api_key=api_key)
+			with open(tmp.name, "rb") as fh:
+				res = client.audio.transcriptions.create(model=model, file=fh)
+			text = getattr(res, "text", None)
+			return text if isinstance(text, str) and text.strip() else None
+		finally:
+			try:
+				os.unlink(tmp.name)
+			except OSError:
+				pass
+
+	try:
+		return await asyncio.to_thread(_run)
+	except Exception as exc:  # noqa: BLE001
+		logger.error(f"whatsapp-cloud: transcripcion OpenAI fallo: {type(exc).__name__}: {exc}")
+		return None
+
+
+def _extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
+	"""Extrae mensajes conversacionales del payload estandar de Meta.
+
+	Ignora statuses (delivered/read), reactions y tipos no soportados. Retorna
+	dicts con keys estables: id, from, type, text, media_id, mime_type.
 	"""
 	entries = payload.get("entry") or []
 	result: list[dict[str, Any]] = []
@@ -231,19 +304,54 @@ def _extract_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
 			value = change.get("value") or {}
 			messages = value.get("messages") or []
 			for msg in messages:
-				if msg.get("type") != "text":
+				msg_type = msg.get("type")
+				if msg_type == "text":
+					text = (msg.get("text") or {}).get("body") or ""
+					if not text:
+						continue
+					result.append(
+						{
+							"id": msg.get("id", ""),
+							"from": msg.get("from", ""),
+							"type": "text",
+							"text": text,
+							"media_id": None,
+							"mime_type": None,
+						}
+					)
 					continue
-				text = (msg.get("text") or {}).get("body") or ""
-				if not text:
+
+				if msg_type not in ("image", "audio"):
+					continue
+				media = msg.get(msg_type) or {}
+				media_id = media.get("id")
+				if not isinstance(media_id, str) or not media_id:
 					continue
 				result.append(
 					{
 						"id": msg.get("id", ""),
 						"from": msg.get("from", ""),
-						"text": text,
+						"type": msg_type,
+						"text": media.get("caption", "") if msg_type == "image" else "",
+						"media_id": media_id,
+						"mime_type": media.get("mime_type") if isinstance(media.get("mime_type"), str) else None,
 					}
 				)
 	return result
+
+
+def _extract_response_text(response: Any) -> str | None:
+	if response is None:
+		return None
+	if hasattr(response, "content") and response.content is not None:
+		return str(response.content)
+	if hasattr(response, "messages") and response.messages:
+		for msg in reversed(response.messages):
+			role = getattr(msg, "role", "")
+			content = getattr(msg, "content", None)
+			if role == "assistant" and content:
+				return str(content)
+	return str(response)
 
 
 def create_router(*, get_tenant_loader: Any) -> APIRouter:
@@ -312,21 +420,81 @@ def create_router(*, get_tenant_loader: Any) -> APIRouter:
 			_touch_column(tenant_id, "last_event_at", error=f"workspace_missing:{exc}")
 			raise HTTPException(status_code=500, detail="tenant_workspace_missing")
 
+		from agno.media import Audio as AgnoAudio, Image as AgnoImage
+		from openagno.core.model_capabilities import get_model_capabilities
+
 		agent = bundle["main_agent"]
+		tenant_model_cfg = bundle.get("config", {}).get("model", {}) or {}
+		tenant_caps = get_model_capabilities(tenant_model_cfg.get("id"))
 		responses_sent = 0
 		last_send_error: str | None = None
 
 		for message in messages:
 			from_jid = message["from"]
 			text = message["text"]
+			msg_type = message.get("type", "text")
+			mime_type = message.get("mime_type")
+			media_bytes: bytes | None = None
+			media_id = message.get("media_id")
 			logger.info(
-				f"[{runtime_slug}] whatsapp-cloud: mensaje de {from_jid}: {text[:80]}"
+				f"[{runtime_slug}] whatsapp-cloud: mensaje de {from_jid}: {text[:80]} (tipo={msg_type})"
 			)
 			try:
-				result = await asyncio.to_thread(
-					agent.run, text, user_id=from_jid, stream=False
-				)
-				reply_text = (getattr(result, "content", None) or str(result) or "").strip()
+				if isinstance(media_id, str) and media_id:
+					media_bytes, downloaded_mime = await download_media(cfg, media_id)
+					mime_type = mime_type or downloaded_mime
+
+				arun_kwargs: dict[str, Any] = {
+					"user_id": f"{runtime_slug}:{from_jid}",
+					"session_id": f"{runtime_slug}:{from_jid}",
+				}
+
+				if media_bytes and msg_type == "audio":
+					if tenant_caps["audio"]:
+						arun_kwargs["audio"] = [
+							AgnoAudio(content=media_bytes, mime_type=mime_type or "audio/ogg")
+						]
+						if not text:
+							text = "[Audio recibido]"
+					else:
+						whisper_key = None
+						provider = str(tenant_model_cfg.get("provider", "")).strip().lower()
+						if provider == "openai":
+							whisper_key = tenant_model_cfg.get("api_key") or None
+						if not whisper_key:
+							whisper_key = os.getenv("OPENAI_API_KEY") or None
+						if whisper_key:
+							transcription = await transcribe_audio_with_openai(
+								media_bytes,
+								mime_type or "audio/ogg",
+								whisper_key,
+							)
+							text = (
+								f"[Transcripcion de audio]: {transcription}"
+								if transcription
+								else "[Recibi tu mensaje de audio pero no pude transcribirlo. Intenta de nuevo o enviame el mensaje como texto.]"
+							)
+						else:
+							text = (
+								"[Recibi tu mensaje de audio. Para que lo pueda procesar, "
+								"configura una API key de OpenAI en tu workspace.]"
+							)
+
+				elif media_bytes and msg_type == "image":
+					if tenant_caps["image"]:
+						arun_kwargs["images"] = [
+							AgnoImage(content=media_bytes, mime_type=mime_type or "image/jpeg")
+						]
+						if not text:
+							text = "Describe o analiza esta imagen"
+					else:
+						text = (
+							"[Recibi tu imagen pero mi modelo actual no puede analizarla. "
+							"Cambia a un modelo multimodal desde el dashboard.]"
+						)
+
+				result = await agent.arun(text, **arun_kwargs)
+				reply_text = (_extract_response_text(result) or "").strip()
 			except Exception as exc:  # noqa: BLE001
 				logger.error(f"[{runtime_slug}] whatsapp-cloud: agente fallo: {exc}")
 				last_send_error = f"agent_error:{exc}"
